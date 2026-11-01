@@ -287,6 +287,34 @@ body.mode-nights .short-only { display: none; }
 .q .opts.opts-col { grid-template-columns: 1fr; }
 .q .opts.opts-col button { font-size: 15.5px; line-height: 1.5; }
 .q .opts.opts-col button b { color: var(--ink-3); font-weight: 600; margin-right: 4px; }
+/* ---------- word book ---------- */
+.book .bk-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.book .bk-head h1 { font: 650 30px/1.2 var(--serif); margin: 0; flex: 1; }
+.book #bookSearch { width: 220px; max-width: 100%; height: 34px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--page); color: var(--ink); }
+.book #bookSearch:focus { outline: none; border-color: var(--accent); }
+.bk-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+.bk-n { margin-left: 6px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] .bk-n { color: var(--ink-2); }
+.bk-cols, .bk-list li { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) 76px; gap: 14px; align-items: baseline; }
+.bk-cols { font-size: 12px; color: var(--ink-3); padding: 0 2px 6px; border-bottom: 1px solid var(--line); }
+.bk-cols span:last-child, .bk-d { text-align: right; }
+.bk-list { list-style: none; margin: 0; padding: 0; }
+.bk-list li { padding: 11px 2px; border-bottom: 1px solid var(--line); }
+.bk-w b { font: 600 17px var(--serif); margin-right: 10px; }
+.bk-w span { font-size: 13.5px; color: var(--ink-2); }
+.bk-m { font-size: 13px; color: var(--ink-3); }
+.bk-bad { color: var(--bad); }
+.bk-d { font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.bk-d.now { color: var(--accent); font-weight: 600; }
+.bk-empty, .bk-more { color: var(--ink-3); font-size: 14px; margin: 26px 0; }
+.bk-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
+.bk-foot .spacer { flex: 1; }
+@media (max-width: 760px) {
+  .bk-cols { display: none; }
+  .bk-list li { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+  .bk-w { grid-column: 1; } .bk-d { grid-column: 2; grid-row: 1; } .bk-m { grid-column: 1 / -1; }
+  .book #bookSearch { width: 100%; }
+}
 .missing { font-size: 13px; color: var(--bad); margin: -22px 0 28px; }
 
 .pop {
@@ -397,6 +425,9 @@ body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
   <span class="spacer"></span>
   <button class="quick" id="quickBtn" title="选择单词文件后自动生成">
     <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg><span>导入单词</span>
+  </button>
+  <button class="iconbtn" id="bookBtn" aria-label="单词本" title="单词本">
+    <svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg><span class="lbl">单词本</span>
   </button>
   <button class="iconbtn" id="themeBtn" aria-label="切换深色模式" title="切换深色模式">
     <svg viewBox="0 0 24 24" id="themeIcon"></svg>
@@ -1688,6 +1719,131 @@ function planToday(words) {
   return { pick, rest, groups, due };
 }
 
+/* ---------------- word book ----------------
+   One quiet list of every word the learner has imported, drawn in the reading area. Four
+   filters, a search box, and backup / restore in the footer. Nothing else. */
+let bookFilter = "all", bookQuery = "";
+const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+function shortDate(key) { if (!key) return ""; const [, m, d] = key.split("-"); return `${+m}月${+d}日`; }
+function dueLabel(b) {
+  const n = daysBetween(dayKey(), b.due);
+  return n <= 0 ? "今天" : n === 1 ? "明天" : `${n} 天后`;
+}
+function bookRows() {
+  const today = dayKey(), q = bookQuery.trim().toLowerCase();
+  return Object.values(bank)
+    .filter((b) => bookFilter === "due" ? b.due <= today
+      : bookFilter === "missed" ? b.lapse
+      : bookFilter === "unwritten" ? !b.written
+      : true)
+    .filter((b) => !q || b.word.toLowerCase().includes(q) || (b.meaning || "").includes(q))
+    .sort((a, b) => bookFilter === "due" || bookFilter === "missed"
+      ? a.due.localeCompare(b.due) || a.word.localeCompare(b.word)
+      : b.learned.localeCompare(a.learned) || a.word.localeCompare(b.word));
+}
+function renderBook() {
+  currentId = null; batch = [];
+  $("tabs").innerHTML = "";
+  renderHistory();
+  const all = Object.values(bank), today = dayKey();
+  const counts = {
+    all: all.length,
+    due: all.filter((b) => b.due <= today).length,
+    missed: all.filter((b) => b.lapse).length,
+    unwritten: all.filter((b) => !b.written).length,
+  };
+  const tabs = [["all", "全部"], ["due", "今天该复习"], ["missed", "最近答错"], ["unwritten", "还没写进文章"]]
+    .map(([k, t]) => `<button class="chip" data-bf="${k}" aria-pressed="${bookFilter === k}">${t}<span class="bk-n">${counts[k]}</span></button>`).join("");
+  const rows = bookRows();
+  const shown = rows.slice(0, 300);
+  const body = shown.map((b) => {
+    const seen = (b.written || 0) * 2 + (b.seen || 0);   // each written article uses the word twice
+    const quiz = b.lapse ? `<span class="bk-bad">上次答错</span>` : b.recalled ? `答对 ${b.recalled} 次` : "";
+    return `<li>
+      <div class="bk-w"><b>${esc(b.word)}</b><span>${esc((b.meaning || "").split("|")[0].trim())}</span></div>
+      <div class="bk-m">${shortDate(b.learned)}学，出现 ${seen} 次${quiz ? `，${quiz}` : ""}</div>
+      <div class="bk-d${b.due <= today ? " now" : ""}">${dueLabel(b)}</div>
+    </li>`;
+  }).join("");
+  $("sheet").className = "sheet book";
+  $("sheet").innerHTML = `
+    <div class="bk-head">
+      <h1>单词本</h1>
+      <input id="bookSearch" type="search" placeholder="搜单词或释义" value="${esc(bookQuery)}" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="bk-tabs">${tabs}</div>
+    ${all.length
+      ? (rows.length ? `<div class="bk-cols"><span>单词</span><span>记录</span><span>下次复习</span></div><ul class="bk-list">${body}</ul>`
+                     : `<p class="bk-empty">这里没有符合条件的词。</p>`)
+      : `<p class="bk-empty">还没有单词。导入一份单词文件、生成一次文章，词就会记在这里。</p>`}
+    ${rows.length > shown.length ? `<p class="bk-more">只显示前 ${shown.length} 个，用搜索找其他词。</p>` : ""}
+    <div class="bk-foot">
+      <span>记录只存在这个浏览器里。换设备前先导出备份。</span>
+      <span class="spacer"></span>
+      <button class="chip" id="exportBtn">导出备份</button>
+      <button class="chip" id="importBak">导入备份</button>
+      <input type="file" id="bakFile" accept=".json,application/json" hidden>
+    </div>`;
+  window.scrollTo({ top: 0 });
+}
+
+/* Backup: word bank, saved articles, the story bible and reading settings. The API key is left
+   out on purpose: a backup file gets copied around, and a key in it would leak. */
+function exportBackup() {
+  const s = load(LS_SET, {}); delete s.apiKey;
+  const data = { app: "word-reader", version: 1, exported: new Date().toISOString(),
+    bank, history, nights, settings: s, words: load(LS_WORDS, "") };
+  const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `单词本备份-${dayKey()}.json`;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function importBackup(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch { data = null; }
+  if (!data || data.app !== "word-reader" || typeof data.bank !== "object") {
+    alert("这个文件不是单词本的备份。请选择从这里导出的 .json 文件。");
+    return;
+  }
+  const n = Object.keys(data.bank).length, h = (data.history || []).length;
+  const merge = confirm(`备份里有 ${n} 个单词、${h} 篇文章。\n\n点「确定」合并到现在的记录（同一个词保留进度更新的那条）。\n点「取消」可以选择改为完全替换。`);
+  if (!merge) {
+    if (!confirm("完全替换会删掉这个浏览器里现有的单词记录和文章，换成备份里的。确定替换吗？")) return;
+    bank = data.bank; history = data.history || []; nights = data.nights || nights;
+  } else {
+    for (const [k, b] of Object.entries(data.bank)) {
+      const cur = bank[k];
+      // Keep whichever record has seen more activity; ties go to the later due date.
+      const score = (x) => (x.written || 0) + (x.seen || 0) + (x.recalled || 0);
+      if (!cur || score(b) > score(cur) || (score(b) === score(cur) && b.due > cur.due)) bank[k] = b;
+    }
+    const ids = new Set(history.map((e) => e.id));
+    history = [...history, ...(data.history || []).filter((e) => !ids.has(e.id))]
+      .sort((a, b) => b.created.localeCompare(a.created)).slice(0, 200);
+    if (data.nights && (data.nights.count || 0) > (nights.count || 0)) nights = data.nights;
+  }
+  if (data.settings) {
+    const s = { ...load(LS_SET, {}), ...data.settings, apiKey: load(LS_SET, {}).apiKey };
+    save(LS_SET, s);
+  }
+  saveBank(); save(LS_HIST, history); saveNights();
+  renderHistory(); updateCount(); renderBook();
+}
+
+$("bookBtn").addEventListener("click", () => { if (!wide()) setDrawer(false); renderBook(); });
+$("sheet").addEventListener("input", (ev) => {
+  if (ev.target.id !== "bookSearch") return;
+  bookQuery = ev.target.value;
+  const pos = ev.target.selectionStart;
+  renderBook();
+  const s = $("bookSearch"); s.focus(); s.setSelectionRange(pos, pos);
+});
+$("sheet").addEventListener("change", (ev) => {
+  if (ev.target.id === "bakFile" && ev.target.files[0]) importBackup(ev.target.files[0]);
+});
+
 function bankStats() {
   const today = dayKey();
   const all = Object.values(bank);
@@ -2347,6 +2503,10 @@ $("sheet").addEventListener("click", (ev) => {
   if (t.closest("[data-retry]")) { retryFailed(); return; }
   if (t.id === "copyMd") { copyMarkdown(t); return; }
   if (t.id === "printIt") { window.print(); return; }
+  const bf = t.closest("[data-bf]");
+  if (bf) { bookFilter = bf.dataset.bf; renderBook(); return; }
+  if (t.id === "exportBtn") { exportBackup(); return; }
+  if (t.id === "importBak") { $("bakFile").click(); return; }
   const ropt = t.closest("button[data-r]");
   if (ropt) {
     const e = history.find((h) => h.id === currentId);
