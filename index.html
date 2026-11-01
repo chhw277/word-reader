@@ -320,10 +320,23 @@ section.block h2 { font: 650 21px/1.3 var(--serif); margin: 0 0 18px; }
 .intro h1 { font: 650 38px/1.2 var(--serif); margin: 0 0 22px; letter-spacing: -.01em; }
 .intro p { font: 19px/1.8 var(--serif); margin: 0 0 1em; max-width: 32em; }
 .intro .small { font: 14px/1.6 var(--sans); color: var(--ink-2); }
-.intro .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 26px; }
-.intro .actions button { height: 42px; padding: 0 18px; border-radius: 10px; font-weight: 600; }
-.intro .actions .go { background: var(--accent); color: var(--accent-ink); border: 0; }
-.intro .actions .alt { background: transparent; border: 1px solid var(--line-2); color: var(--ink); }
+.drop-zone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; min-height: 168px; margin: 28px 0 18px; padding: 24px;
+  border: 1.5px dashed var(--line-2); border-radius: 14px; background: var(--field); color: var(--ink);
+}
+.drop-zone:hover, body.dropping .drop-zone { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--field)); }
+.drop-zone b { font-size: 19px; font-weight: 650; }
+.drop-zone span { font-size: 13.5px; color: var(--ink-3); }
+.intro .small .link { font-size: inherit; }
+.quick {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px;
+  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px; font-size: 13.5px; font-weight: 600;
+}
+.quick svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.quick:hover { filter: brightness(1.08); }
+body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
+@media (max-width: 760px) { .quick span { display: none; } .quick { width: 36px; padding: 0; justify-content: center; } }
 .loading { font: 19px/1.7 var(--serif); color: var(--ink-2); padding-top: 12px; }
 .loading .bar { height: 3px; background: var(--line); margin-top: 22px; overflow: hidden; border-radius: 2px; }
 .loading .bar i { display: block; height: 100%; width: 35%; background: var(--marker); animation: slide 1.3s ease-in-out infinite; }
@@ -367,6 +380,9 @@ section.block h2 { font: 650 21px/1.3 var(--serif); margin: 0 0 18px; }
   <span class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#23606A"/><rect x="12" y="14" width="40" height="7" rx="3.5" fill="#fff"/><rect x="12" y="29" width="11" height="7" rx="3.5" fill="#fff"/><rect x="26" y="25" width="27" height="15" rx="3" fill="#FFE45C"/><rect x="12" y="44" width="28" height="7" rx="3.5" fill="#fff"/></svg>今日单词短文</span>
   <div class="tabs" id="tabs" role="tablist"></div>
   <span class="spacer"></span>
+  <button class="quick" id="quickBtn" title="选择 PDF 后自动生成">
+    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg><span>今天的 PDF</span>
+  </button>
   <button class="iconbtn" id="themeBtn" aria-label="切换深色模式" title="切换深色模式">
     <svg viewBox="0 0 24 24" id="themeIcon"></svg>
   </button>
@@ -722,7 +738,8 @@ async function parseBbdcPdf(file) {
   return { words, total };
 }
 
-async function importPdf(file) {
+// auto = true: the one-step daily flow. Picking a PDF goes straight to generating.
+async function importPdf(file, auto = false) {
   const msg = $("importMsg");
   msg.hidden = false; msg.className = "count"; msg.textContent = `正在读取 ${file.name}…`;
   try {
@@ -731,30 +748,48 @@ async function importPdf(file) {
     $("words").value = words.map((w) => `${w.word}  ${w.meaning}`).join("\n");
     updateCount();
     persistWords();
-    if (total && total !== words.length) {
+    const short = total && total !== words.length;
+    if (short) {
       msg.className = "count bad";
       msg.textContent = `PDF 写的是 ${total} 词，只读出了 ${words.length} 个，请核对一下。`;
     } else {
       msg.innerHTML = `已从 PDF 导入 <b>${words.length}</b> 个单词`;
     }
+    if (auto && !short) generate();
+    else if (auto) setDrawer(true);
   } catch (e) {
     msg.className = "count bad";
     msg.textContent = e instanceof UserError ? e.message : `读取 PDF 失败：${e.message || e}`;
+    if (auto) { setDrawer(true); renderError(e instanceof UserError ? e : new UserError(msg.textContent)); }
   }
 }
-$("importBtn").addEventListener("click", () => $("pdfFile").click());
+let autoImport = false;
+function pickPdf(auto) { autoImport = auto; $("pdfFile").click(); }
+$("importBtn").addEventListener("click", () => pickPdf(false));
+$("quickBtn").addEventListener("click", () => pickPdf(true));
 $("pdfFile").addEventListener("change", (ev) => {
   const f = ev.target.files[0];
-  if (f) importPdf(f);
+  if (f) importPdf(f, autoImport);
   ev.target.value = "";
 });
 const ta = $("words");
+const pdfOf = (ev) => [...(ev.dataTransfer?.files || [])].find((x) => /\.pdf$/i.test(x.name) || x.type === "application/pdf");
 ta.addEventListener("dragover", (ev) => { ev.preventDefault(); ta.classList.add("drag"); });
 ta.addEventListener("dragleave", () => ta.classList.remove("drag"));
 ta.addEventListener("drop", (ev) => {
   ta.classList.remove("drag");
-  const f = [...(ev.dataTransfer?.files || [])].find((x) => /\.pdf$/i.test(x.name) || x.type === "application/pdf");
-  if (f) { ev.preventDefault(); importPdf(f); }
+  const f = pdfOf(ev);
+  if (f) { ev.preventDefault(); ev.stopPropagation(); importPdf(f, false); }
+});
+// Drop a PDF anywhere on the reading area: import and generate in one go.
+document.addEventListener("dragover", (ev) => {
+  if ([...(ev.dataTransfer?.items || [])].some((i) => i.kind === "file")) { ev.preventDefault(); document.body.classList.add("dropping"); }
+});
+document.addEventListener("dragleave", (ev) => { if (!ev.relatedTarget) document.body.classList.remove("dropping"); });
+document.addEventListener("drop", (ev) => {
+  document.body.classList.remove("dropping");
+  const f = pdfOf(ev);
+  if (f) { ev.preventDefault(); importPdf(f, true); }
 });
 
 const LS_WORDS = "wordreader.words.v1";
@@ -966,6 +1001,7 @@ function chunk(arr, n) {
 }
 
 async function generate() {
+  if ($("go").disabled) return;   // a batch is already running
   const words = parseWords($("words").value);
   if (!words.length) {
     setDrawer(true);
@@ -1193,16 +1229,15 @@ function renderError(e, prefix = "", retryCount = 0) {
 function renderIntro() {
   $("tabs").innerHTML = "";
   $("sheet").className = "sheet";
+  const hasKey = !!$("apiKey").value.trim();
   $("sheet").innerHTML = `<div class="intro">
     ${buddy(greeting(), "今天也一起读一篇吧。", { wave: "idle" })}
-    <h1>把单词放回句子里</h1>
-    <p>背完单词后，在不背单词里导出 PDF，导入这里，点「生成短文」。你会得到几篇用到这些词的文章，词在文中<mark class="w">highlighted</mark>，点一下就能看释义。</p>
-    <p>读完还有几道小题，检查你是不是真的记住了。</p>
-    <p class="small">第一次使用需要在「API 设置」里填一个 API Key，只用填一次。DeepSeek 或通义千问的 Key 在国内可以直接用，每篇大约花几分钱。</p>
-    <div class="actions">
-      <button class="go" id="openDrawer">导入今天的单词</button>
-      <button class="alt" id="demo">先看一篇示例</button>
-    </div>
+    <button class="drop-zone" id="introPick">
+      <b>选择今天的 PDF</b>
+      <span>选好就自动开始写，也可以把 PDF 直接拖到这里</span>
+    </button>
+    ${hasKey ? "" : `<p class="small">第一次用要先填 API Key，只用填一次。<button class="link" id="openKey">现在去填</button></p>`}
+    <p class="small"><button class="link" id="demo">先看一篇示例</button></p>
   </div>`;
 }
 
@@ -1267,7 +1302,8 @@ $("sheet").addEventListener("click", (ev) => {
   const mark = t.closest("mark.w[data-w]");
   if (mark) { ev.stopPropagation(); mark.classList.contains("on") ? closePop() : openPop(mark); return; }
   if (t.id === "demo") { loadDemo(); return; }
-  if (t.id === "openDrawer") { setDrawer(true); return; }
+  if (t.closest("#introPick")) { pickPdf(true); return; }
+  if (t.id === "openKey") { setDrawer(true); $("settingsBox").open = true; setTimeout(() => $("apiKey").focus(), 80); return; }
   const go = t.closest("[data-go]");
   if (go) { show(go.dataset.go); return; }
   if (t.closest("[data-retry]")) { retryFailed(); return; }
