@@ -1310,8 +1310,9 @@ const PHRASE_MIN = {
 // marked target word itself, so two different uses of the same word are fine.
 const STOP = new Set("the a an and or but of to in on at by for with from as is are was were be been his her their its he she they it that this then there into over not no".split(" "));
 function contentSet(s) {
-  return new Set(s.toLowerCase().replace(/\{\{[^{}]*\}\}/g, " ").replace(/\[\[|\]\]/g, "")
-    .match(/[a-z']{3,}/g)?.filter((w) => !STOP.has(w)) || []);
+  return new Set(s.replace(/\{\{[^{}]*\}\}/g, " ").replace(/\[\[|\]\]/g, "")
+    .replace(/(^|[^.!?"'“‘]\s+)[A-Z][a-z]+/g, "$1")          // drop names (capitalised mid-sentence)
+    .toLowerCase().match(/[a-z']{3,}/g)?.filter((w) => !STOP.has(w) && !/^(said|asked|says|would|could|then|when|what|have|had|did)$/.test(w)) || []);
 }
 // Two kinds of echo count as a restatement:
 //  1. heavy overlap of content words (a near copy of the sentence);
@@ -1326,7 +1327,9 @@ function nearDuplicates(sentences) {
     const a = roots[i], b = roots[j];
     let inter = 0; a.forEach((w) => b.has(w) && inter++);
     const sharedMark = [...marks[i]].some((m) => marks[j].has(m));
-    if ((a.size >= 4 && b.size >= 4 && inter / Math.min(a.size, b.size) >= 0.6) || (sharedMark && inter >= 2)) out.push([sentences[i], sentences[j]]);
+    // Real runs showed shared character names alone ("Mira", "Toma") tripping the second rule, so
+    // capitalised names are left out of the overlap and it needs three shared content words.
+    if ((a.size >= 5 && b.size >= 5 && inter / Math.min(a.size, b.size) >= 0.6) || (sharedMark && inter >= 3)) out.push([sentences[i], sentences[j]]);
   }
   return out;
 }
@@ -1370,6 +1373,12 @@ function auditArticle(art, words, opts, review = [], extra = []) {
   // Near-duplicate sentences: the second use of a word must come from a new event, not a restatement.
   const dups = nearDuplicates(sentencesOf(art));
   if (dups.length) problems.push(`${dups.length} pair(s) of sentences say nearly the same thing, e.g. "${plainText(dups[0][0]).slice(0, 90)}" / "${plainText(dups[0][1]).slice(0, 90)}". Rewrite the later one so it describes something new (a different action, consequence or detail), keeping its marked word.`);
+  // Phrase marks around a single word ("[[survey]]") are not exam phrases.
+  const fakePhrase = (art.paragraphs.join(" ").match(/\[\[([^\[\]]+)\]\]/g) || []).filter((m) => !/\s/.test(m.slice(2, -2).trim()) && !/^(Admittedly|Moreover|Furthermore|Nevertheless|Consequently)$/i.test(m.slice(2, -2).trim()));
+  if (fakePhrase.length) problems.push(`Remove the [[...]] brackets from ${fakePhrase.join(", ")}: brackets are only for the assigned multi-word exam phrase.`);
+  // Night parts have a length budget; editing tended to grow the last part to 750+ words with an
+  // epilogue tacked on after the hook.
+  if (opts.maxWords && runWords > opts.maxWords) problems.push(`The text is too long: ${runWords} words, the limit is ${opts.maxWords}. Cut scenes that repeat or that come after the ending; keep every marked word.`);
   problems.push(...extra);
   return { problems, ok: !problems.length };
 }
@@ -1414,7 +1423,7 @@ function buildRevisePrompt(draft, words, opts, review = [], extra = []) {
   return `You are a demanding editor of graded readers for Chinese learners of English (level: ${opts.level}). Below is a draft JSON produced by a writer. Target words: ${list}.${rlist ? ` Review words (use once each in the text, not in glossary; each needs its own quiz question with "review": true): ${rlist}.` : ""}
 ${must}
 Then revise it. Check and fix, in this order:
-1. Every target word must appear exactly twice (three at most), in different paragraphs, every occurrence marked as {{surface|target}} with BOTH halves (never {{word}} alone). The two uses must describe different events. Every review word must appear once, marked the same way. Do not drop any target word. You may lengthen the text by up to 40% to make room.
+1. Every target word must appear exactly twice (three at most), in different paragraphs, every occurrence marked as {{surface|target}} with BOTH halves (never {{word}} alone). The two uses must describe different events. Every review word must appear once, marked the same way. Do not drop any target word. ${opts.maxWords ? `Stay under ${opts.maxWords} words in total; to make room, rework existing sentences rather than adding new scenes.` : "You may lengthen the text by up to 40% to make room."}
 2. Any target word in an unnatural collocation or a sentence that exists only to contain it (e.g. "the legislative rules of the school"): rewrite so the word is used the way a native writer would, even if that means changing the situation in the sentence.
 2b. Factual errors (science, history, how things work): fix them. Example: water rises in plant stems by capillary action and transpiration, not gravity.
 3. Flat or generic writing: replace vague phrases with concrete detail; vary sentence length; cut any moral spelled out at the end. Remove empty filler ("delve", "tapestry", "a testament to", "embark on a journey"). KEEP the exam set phrases marked [[...]] (they are there on purpose for exam practice); only fix them if they are used incorrectly or several are stacked in one sentence. Keep "phrases" consistent with the [[...]] marks.
@@ -1511,6 +1520,8 @@ function markCounts(art) {
   });
   return c;
 }
+const runningWords = (art) => (plainText(art.paragraphs.join(" ")).match(/[A-Za-z'’-]+/g) || []).length;
+const lengthOver = (art) => art._maxWords && runningWords(art) > art._maxWords;
 // Score used to decide whether the revision is better than the draft: words covered first,
 // then words that reached two uses.
 function usedCount(art, words) {
@@ -1521,16 +1532,15 @@ function usedCount(art, words) {
   // Penalties, so an edit that removes drilling (a word used 5 times, restated sentences) wins.
   const over = words.filter((w) => (c.get(w.word.toLowerCase()) || 0) > 3).length;
   const dups = nearDuplicates(sentencesOf(art)).length;
-  return covered * 1000 + twice * 10 + phrases - over * 8 - dups * 4;
+  return covered * 1000 + twice * 10 + phrases - over * 8 - dups * 4 - (lengthOver(art) ? 6 : 0);
 }
 
 function parseArticle(text, words = []) {
   let t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const a = t.indexOf("{"), b = t.lastIndexOf("}");
   if (a < 0 || b < a) throw new UserError("模型返回的内容不是 JSON，点「生成短文」再试一次。", text.slice(0, 500));
-  let obj;
-  try { obj = JSON.parse(t.slice(a, b + 1)); }
-  catch (e) { throw new UserError("模型返回的 JSON 格式有误，点「生成短文」再试一次。", text.slice(0, 500)); }
+  const obj = looseJson(t.slice(a, b + 1));
+  if (!obj) throw new UserError("模型返回的 JSON 格式有误，点「生成短文」再试一次。", text.slice(0, 500));
   if (!Array.isArray(obj.paragraphs) || !obj.paragraphs.length) throw new UserError("模型返回的内容里没有正文，再试一次。", text.slice(0, 500));
   obj.translation = Array.isArray(obj.translation) ? obj.translation : [];
   obj.glossary = Array.isArray(obj.glossary) ? obj.glossary : [];
@@ -1560,8 +1570,26 @@ function cleanMarks(art, words = []) {
     .replace(/\s*_[^_\n]*(?:\.\.\.|…)[^_\n]*_\s*/g, " ")
     // markdown italics the model sometimes uses instead of [[...]]
     .replace(/_([A-Za-z][^_\n]{2,60})_/g, "[[$1]]")
+    // phrase marks written like word marks, "[[was closely related to|be closely related to]]"
+    .replace(/\[\[([^\[\]|]+)\|[^\[\]]*\]\]/g, "[[$1]]")
+    // a single ordinary word in phrase brackets ("[[survey]]") is not an exam phrase
+    .replace(/\[\[([A-Za-z'-]+)\]\]/g, (m, w) => (/^(Admittedly|Moreover|Furthermore|Nevertheless|Consequently)$/i.test(w) ? m : w))
+    // a word mark wrapped around a bare lemma inside the sentence, "worked the new channels {{incorporate|incorporate}} into"
+    // is left alone: we can't fix grammar here, the audit asks the editor instead
     .replace(/\b(\w+)\s+\1\b/gi, (m, w) => (/^(that|had)$/i.test(w) ? m : w))   // "but also but also"
     .replace(/\s{2,}/g, " ").trim();
+  // Seen in a real run: Chinese translations interleaved into "paragraphs" (English, Chinese,
+  // English, Chinese...). Pull them out; use them as the translation when that is missing.
+  const isZh = (p) => (String(p).match(/[一-鿿]/g) || []).length > String(p).replace(/\s/g, "").length * 0.3;
+  if (art.paragraphs.some(isZh)) {
+    const en = [], zh = [];
+    art.paragraphs.forEach((p) => { if (isZh(p)) { if (en.length) zh[en.length - 1] = (zh[en.length - 1] || "") + p; } else en.push(p); });
+    if (en.length) {
+      const t = art.translation || [];
+      art.translation = en.map((_, i) => (t.length === en.length && t[i]) ? t[i] : (zh[i] || t[i] || ""));
+      art.paragraphs = en;
+    }
+  }
   art.paragraphs = art.paragraphs.map(fix);
   // Translations are Chinese prose: strip any markup the model copied over.
   art.translation = (art.translation || []).map((z) => String(z || "")
@@ -1964,7 +1992,7 @@ Plan the night so each part's words fit its events (choose situations that make 
 The narrator and listener appear only at the start of Part 1 and the end of Part ${NIGHT_PARTS}; Parts 2 and 3 stay inside the tale. Each part moves the plot forward with new events; no part repeats another.
 Reply with JSON only:
 {"title": "tonight's English title",
- ${nights.frame ? "" : `"frame": "2-3 sentences describing the frame story, narrator and listener (names), and the stakes",\n `}"cast": "one line per character of tonight's tale: name, role, one trait",
+ ${nights.frame ? "" : `"frame": "2-3 sentences about the frame only: narrator, listener (with names), setting and stakes. Do not mention tonight's inner tale or its characters here.",\n "frameNames": ["narrator's name", "listener's name"],\n `}"cast": "one line per character of tonight's INNER tale (not the narrator or listener): name, role, one trait",
  "parts": [{"beats": "3-5 sentences: exactly what happens in this part, who speaks, which words go where"}],
  "summary": "2 sentences summarizing tonight's tale (for continuity)",
  "hook": "the cliffhanger the night ends on (1 sentence)"}`;
@@ -1988,9 +2016,17 @@ function assignedPhraseRule(phrase) {
 
 // The frame (narrator and listener) only appears at the very start and very end of the night.
 // In the first real night, the narrator interrupted in parts 1, 3 and 4, which broke the tale.
-function frameNames(frame = nights.frame) {
-  const src = String(frame || "");
-  return [...new Set((src.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter((w) => !/^(The|This|She|Her|His|They|Each|Every|When|Night|Nights|One|Thousand|Sultan|Sultana|Palace|Lady|Lord|King|Queen)$/.test(w)))];
+// Names of the narrator and listener only. In the first real run, guessing them from the frame
+// sentence also caught the inner tale's heroine ("tonight she continues the tale of Mira"), and the
+// editor was told to delete her from the middle parts. So: explicit names first, and any name that
+// appears in tonight's cast is never treated as a frame character.
+function frameNames(frame = nights.frame, outline = {}) {
+  const cast = String(outline.cast || "");
+  const explicit = (nights.frameNames?.length ? nights.frameNames : outline.frameNames) || [];
+  if (explicit.length) return explicit.map(String).filter((n) => n && !new RegExp(`\\b${n}\\b`).test(cast));
+  const src = String(frame || "").split(/tonight|continues the tale|tale of/i)[0];
+  return [...new Set((src.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter((w) => !/^(The|This|She|Her|His|They|Each|Every|When|Night|Nights|One|Thousand|Sultan|Sultana|Palace|Lady|Lord|King|Queen|If|Enough)$/.test(w)))]
+    .filter((n) => !cast || new RegExp(`\\b${n}\\b[^;\\n]*(storyteller|listener|narrator|Sultan)`, "i").test(cast) || !new RegExp(`\\b${n}\\b`).test(cast));
 }
 function frameCheck(idx, names) {
   return (art) => {
@@ -2014,9 +2050,9 @@ function nightPartPrompt(part, idx, outline, words, review, opts, phrase) {
   const sub = { ...opts, assignPhrase: phrase, genre: role.mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" };
   return buildPrompt(words, sub, review)
     .replace(/^You are an experienced writer[^\n]*\n/, `You are writing PART ${idx + 1} of ${NIGHT_PARTS} of tonight's installment ("${outline.title}") of a One Thousand and One Nights style serial for Chinese learners of English. The learner memorized these words today:\n`)
-    .replace(/Write [^\n]*English words long[^\n]*\n/, `Write about 400 English words for this part, at the level of ${opts.level}. It is one continuous section of a longer text: no title of its own, no summary or retelling of other parts.\n`)
+    .replace(/Write [^\n]*English words long[^\n]*\n/, `Write 400 to 500 English words for this part (never more than 550), at the level of ${opts.level}. It is one continuous section of a longer text: no title of its own, no summary or retelling of other parts.${idx === NIGHT_PARTS - 1 ? " The hook is the very last line of the night: write nothing after it (no epilogue, no 'weeks later')." : ""}\n`)
     .replace(/Before writing, silently decide[^\n]*\n/,
-      `Frame story: ${nights.frame || outline.frame || ""}\nCharacters (use these names and roles consistently): ${outline.cast || ""}\nTonight's full plan:\n${plan}\n${edges}\nDo not repeat events, images or sentences from the other parts; pick up exactly where the previous part ends.\nHow to write it: ${craft}\n`);
+      `Frame story: ${nights.frame || outline.frame || ""}\nCharacters (use these names and roles consistently): ${outline.cast || ""}\nTonight's full plan:\n${plan}\n${edges}\n${idx > 0 ? `Start right where Part ${idx} ends (its last beat above). Do not re-introduce the setting or re-tell anything that happened in earlier parts; the reader has just read them.` : "After the short palace scene, start the tale and stop where this part's plan ends; later parts continue from there."}\nDo not repeat events, images or sentences from the other parts.\nHow to write it: ${craft}\n`);
 }
 
 function nightsAvailable() { return isNights($("genre").value); }
@@ -2038,8 +2074,13 @@ async function generateNight(words, opts) {
   const asWord = (b) => ({ word: b.word, meaning: b.meaning });
   try {
     stage(`第 ${nights.count + 1} 夜：正在构思今晚的故事…`, `今晚用 ${plan.pick.length} 个新词${plan.due.length ? `、${plan.due.length} 个复习词` : ""}，分 ${plan.groups.length} 段写，一共大约 ${plan.groups.length * 400} 词。通常需要 2 到 4 分钟。`);
-    const outlineRaw = await callModel(nightOutlinePrompt(plan.groups, plan.due, opts));
-    const outline = parseAiJson(outlineRaw);
+    // One automatic retry: a malformed outline should cost ten seconds, not the whole night.
+    let outlineRaw = await callModel(nightOutlinePrompt(plan.groups, plan.due, opts));
+    let outline = parseAiJson(outlineRaw);
+    if (!outline || !Array.isArray(outline.parts)) {
+      outlineRaw = await callModel(nightOutlinePrompt(plan.groups, plan.due, opts));
+      outline = parseAiJson(outlineRaw);
+    }
     if (!outline || !Array.isArray(outline.parts)) throw new UserError("构思今晚的故事时模型返回的格式不对，再点一次生成试试。", outlineRaw.slice(0, 400));
     while (outline.parts.length < plan.groups.length) outline.parts.push({ beats: "Continue the tale naturally." });
     // Review words go to the narrative parts first; the argument part is already dense.
@@ -2052,9 +2093,9 @@ async function generateNight(words, opts) {
     // One different essay phrase per part, rotating each night; the argument part gets two.
     const pool = nightPhrases(nights.count + 1, plan.groups.length + 1);
     const phraseFor = plan.groups.map((_, i) => PART_ROLES[i].mode === "argument" ? `${pool[i]}" and "${pool[plan.groups.length]}` : pool[i]);
-    const names = frameNames(nights.frame || outline.frame);
+    const names = frameNames(nights.frame || outline.frame, outline);
     const parts = await Promise.all(plan.groups.map(async (g, i) => {
-      const sub = { ...opts, assignPhrase: phraseFor[i], genre: PART_ROLES[i].mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" };
+      const sub = { ...opts, assignPhrase: phraseFor[i], maxWords: 600, genre: PART_ROLES[i].mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" };
       const art = await writeChecked(nightPartPrompt(outline.parts[i], i, outline, g, reviewFor[i], opts, phraseFor[i]), g, reviewFor[i], sub, frameCheck(i, names));
       done++; tick();
       return art;
@@ -2095,6 +2136,7 @@ async function generateNight(words, opts) {
     else markWritten(allWords);
     nights.count += 1;
     if (!nights.frame) nights.frame = outline.frame || "";
+    if (!nights.frameNames?.length) nights.frameNames = names;
     art.phrases = cleanMarks({ paragraphs: [], phrases: art.phrases }).phrases;   // one entry per phrase
     nights.tales.push({ night: nights.count, title: art.title, summary: outline.summary || "" });
     nights.tales = nights.tales.slice(-30);
@@ -2123,18 +2165,70 @@ async function generateNight(words, opts) {
 // A revision is kept only if it parses and scores at least as well, so an edit can't make it worse.
 async function writeChecked(prompt, words, review, opts, extraCheck = () => []) {
   const all = [...words, ...review];
-  let art = parseArticle(await callModel(prompt), all);
+  const tag = (a) => { if (opts.maxWords) Object.defineProperty(a, "_maxWords", { value: opts.maxWords, enumerable: false }); return a; };
+  let art = tag(parseArticle(await callModel(prompt), all));
   for (let round = 0; round < 2; round++) {
     if (round > 0 && auditArticle(art, words, opts, review, extraCheck(art)).ok) break;
     try {
-      const rev = parseArticle(await callModel(buildRevisePrompt(art, words, opts, review, extraCheck(art))), all);
+      const rev = tag(parseArticle(await callModel(buildRevisePrompt(art, words, opts, review, extraCheck(art))), all));
       if (usedCount(rev, words) >= usedCount(art, words)) { rev.refined = true; art = rev; }
     } catch (e) {
       if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
       break;
     }
   }
+  art = await patchSecondUses(art, words, opts);
   return syncPhrases(art);
+}
+
+// Real runs: after two full edits, a few of 40 words still appeared only once, or (twice in five
+// runs) not at all, because asking a full rewrite to add many uses at once is unreliable. This
+// targeted step asks only for one new sentence per missing use, saying which paragraph it goes
+// after, and inserts them. Small output, so it is fast and cheap, and nothing else changes.
+async function patchSecondUses(art, words, opts) {
+  const c = markCounts(art);
+  const firstPara = (w) => art.paragraphs.findIndex((p) => new RegExp(`\\{\\{[^{}|]+\\|${w}\\}\\}`, "i").test(p));
+  // A missing word needs two sentences, in two different paragraphs.
+  const need = words.flatMap((w) => {
+    const n = c.get(w.word.toLowerCase()) || 0;
+    return n === 0 ? [{ w: w.word, note: "not used yet" }, { w: w.word, note: "not used yet; this is its second sentence, in another paragraph" }]
+      : n === 1 ? [{ w: w.word, note: `already used in paragraph ${firstPara(w.word)}; put the new sentence in a different paragraph` }] : [];
+  });
+  if (!need.length || art.paragraphs.length < 2) return art;
+  const numbered = art.paragraphs.map((p, i) => `[${i}] ${plainText(p)}`).join("\n");
+  const asks = need.map((x) => `- ${x.w} (${x.note})`).join("\n");
+  let reply;
+  try {
+    reply = await callModel(`Below is a text in numbered paragraphs, for Chinese learners of English (level: ${opts.level}). For each word listed, write ONE new sentence that uses it naturally (its common exam sense) and fits right after the end of a paragraph you choose, continuing the story or argument with a new detail, not repeating anything already said. Mark the word as {{surface form|word}}. Also give a natural Chinese translation of the sentence.
+
+Words:
+${asks}
+
+Text:
+${numbered}
+
+Reply with JSON only: {"add": [{"word": "...", "after": 3, "sentence": "...", "zh": "..."}]}`);
+  } catch (e) {
+    if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
+    return art;
+  }
+  const obj = parseAiJson(reply);
+  const adds = (obj?.add || []).filter((a) => need.some((x) => x.w.toLowerCase() === String(a.word).toLowerCase())
+    && Number.isInteger(+a.after) && +a.after >= 0 && +a.after < art.paragraphs.length
+    && new RegExp(`\\{\\{[^{}|]+\\|${a.word}\\}\\}`, "i").test(String(a.sentence || "").replace(/\{\{([^{}|]+)\}\}/g, (_, s) => `{{${s}|${a.word}}}`)));
+  if (!adds.length) return art;
+  const next = { ...art, paragraphs: art.paragraphs.slice(), translation: (art.translation || []).slice() };
+  for (const a of adds) {
+    const i = +a.after;
+    const s = String(a.sentence).replace(/\{\{([^{}|]+)\}\}/g, (_, x) => `{{${x}|${a.word}}}`).trim();
+    // The model may answer with "Word" vs "word"; store the lemma exactly as in the list.
+    const canon = words.find((w) => w.word.toLowerCase() === String(a.word).toLowerCase())?.word || a.word;
+    const fixed = s.replace(new RegExp(`\\|${a.word}\\}\\}`, "gi"), `|${canon}}}`);
+    next.paragraphs[i] = `${next.paragraphs[i].trim()} ${fixed}`;
+    if (a.zh) next.translation[i] = `${next.translation[i] || ""}${a.zh}`;
+  }
+  if (art._maxWords) Object.defineProperty(next, "_maxWords", { value: art._maxWords, enumerable: false });
+  return usedCount(next, words) > usedCount(art, words) ? next : art;
 }
 
 async function dedupeAcrossParts(parts, groups, reviewFor, opts, onStatus) {
@@ -2158,10 +2252,20 @@ async function dedupeAcrossParts(parts, groups, reviewFor, opts, onStatus) {
   if (jobs.length) { onStatus(`四段写好了，正在改掉段与段之间重复的句子（${jobs.length} 段）…`); await Promise.all(jobs); }
 }
 
+// Lenient JSON: models sometimes leave a trailing comma ({"a": 1, }) or use smart quotes as
+// delimiters. Seen in a real run, where it stopped a whole night at the outline step.
+function looseJson(s) {
+  try { return JSON.parse(s); } catch {}
+  const fixed = s.replace(/,\s*([}\]])/g, "$1").replace(/[“”]/g, (q, i, str) => {
+    const before = str.slice(Math.max(0, i - 2), i);
+    return /[:{\[,]\s*$/.test(before) || /^\s*[:,}\]]/.test(str.slice(i + 1, i + 3)) ? '"' : q;
+  });
+  try { return JSON.parse(fixed); } catch { return null; }
+}
 function parseAiJson(text) {
   const t = String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const a = t.indexOf("{"), b = t.lastIndexOf("}");
-  try { return JSON.parse(t.slice(a, b + 1)); } catch { return null; }
+  return a < 0 || b < a ? null : looseJson(t.slice(a, b + 1));
 }
 
 // Reading-comprehension questions on the whole night, in the style of 考研英语阅读:
