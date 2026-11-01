@@ -209,6 +209,9 @@ mark.w:hover, mark.w.on { background: linear-gradient(transparent 14%, var(--mar
 /* Review words: the page's teal accent instead of yellow, so old and new words read differently. */
 mark.w.rv, :root[data-theme="dark"] mark.w.rv { background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 0 -2px 0 var(--accent); }
 mark.w.rv:hover, mark.w.rv.on { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.rv-tag { display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 4px; font: 600 12px/1.6 var(--sans); vertical-align: 2px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.rv-note { color: var(--accent); }
 .rv-key { padding: 0 3px; margin: 0 1px; background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 0 -2px 0 var(--accent); }
 .plain mark.w { background: none !important; box-shadow: none !important; }
 .plain mark.w:hover, .plain mark.w.on { background: var(--marker-soft) !important; }
@@ -276,6 +279,14 @@ mark.w.rv:hover, mark.w.rv.on { background: color-mix(in srgb, var(--accent) 24%
   .wave { height: 40px; gap: 4px; }
   .wave i { width: 7px; }
 }
+.short-only { }
+body.mode-nights .short-only { display: none; }
+.part-break { text-align: center; color: var(--ink-3); letter-spacing: .4em; margin: 6px 0 22px; font-size: 14px; }
+.rd-tag { display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 4px; font: 600 12px/1.6 var(--sans); vertical-align: 2px;
+  color: var(--ink-2); background: var(--field); border: 1px solid var(--line); }
+.q .opts.opts-col { grid-template-columns: 1fr; }
+.q .opts.opts-col button { font-size: 15.5px; line-height: 1.5; }
+.q .opts.opts-col button b { color: var(--ink-3); font-weight: 600; margin-right: 4px; }
 .missing { font-size: 13px; color: var(--bad); margin: -22px 0 28px; }
 
 .pop {
@@ -384,8 +395,8 @@ body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
   <span class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#23606A"/><rect x="12" y="14" width="40" height="7" rx="3.5" fill="#fff"/><rect x="12" y="29" width="11" height="7" rx="3.5" fill="#fff"/><rect x="26" y="25" width="27" height="15" rx="3" fill="#FFE45C"/><rect x="12" y="44" width="28" height="7" rx="3.5" fill="#fff"/></svg>今日单词短文</span>
   <div class="tabs" id="tabs" role="tablist"></div>
   <span class="spacer"></span>
-  <button class="quick" id="quickBtn" title="选择 PDF 后自动生成">
-    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg><span>今天的 PDF</span>
+  <button class="quick" id="quickBtn" title="选择单词文件后自动生成">
+    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg><span>导入单词</span>
   </button>
   <button class="iconbtn" id="themeBtn" aria-label="切换深色模式" title="切换深色模式">
     <svg viewBox="0 0 24 24" id="themeIcon"></svg>
@@ -403,9 +414,9 @@ body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
   <div class="drawer-body">
     <button class="import" id="importBtn" type="button">
       <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14l3 3 3-3"/></svg>
-      <div><b>导入不背单词 PDF</b><span>点这里选择文件，或拖到下面的框里</span></div>
+      <div><b>导入单词文件</b><span>PDF、Word、Excel、TXT 或图片，也可以拖到下面的框里</span></div>
     </button>
-    <input type="file" id="pdfFile" accept=".pdf,application/pdf" hidden>
+    <input type="file" id="pdfFile" accept=".pdf,.docx,.txt,.md,.csv,.tsv,.xlsx,.xls,.jpg,.jpeg,.png,.webp,.gif" hidden>
 
     <div class="field">
       <div class="labrow">
@@ -432,6 +443,7 @@ body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
       <div class="field">
         <label for="genre">文体</label>
         <select id="genre">
+          <option value="nights" selected>一千零一夜（每晚一篇长文）</option>
           <option value="a short story with characters and a plot">小故事</option>
           <option value="a news report">新闻报道</option>
           <option value="a popular-science article">科普文章</option>
@@ -441,7 +453,7 @@ body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
         </select>
       </div>
     </div>
-    <div class="row">
+    <div class="row short-only">
       <div class="field">
         <label for="length">每篇长度</label>
         <select id="length">
@@ -453,12 +465,23 @@ body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
       <div class="field">
         <label for="per">每篇最多用词</label>
         <select id="per">
-          <option value="8">8 个</option>
-          <option value="12" selected>12 个</option>
+          <option value="6">6 个</option>
+          <option value="8" selected>8 个（推荐）</option>
+          <option value="12">12 个</option>
           <option value="15">15 个</option>
           <option value="20">20 个</option>
         </select>
       </div>
+    </div>
+    <div class="field short-only">
+      <label for="maxArticles">每天最多几篇</label>
+      <select id="maxArticles">
+        <option value="1">1 篇</option>
+        <option value="2">2 篇</option>
+        <option value="3" selected>3 篇（推荐）</option>
+        <option value="5">5 篇</option>
+        <option value="99">不限，全部写完</option>
+      </select>
     </div>
     <div class="field">
       <label for="topic">话题（可不填）</label>
@@ -497,7 +520,7 @@ body.dropping .sheet { outline: 2px dashed var(--accent); outline-offset: 6px; }
     </details>
 
     <details class="sec history" open>
-      <summary>读过的短文</summary>
+      <summary>读过的文章</summary>
       <ul id="hist"></ul>
     </details>
   </div>
@@ -547,18 +570,22 @@ function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-const settingIds = ["level", "genre", "length", "per", "topic", "provider", "baseUrl", "model", "apiKey"];
+const settingIds = ["level", "genre", "length", "per", "maxArticles", "topic", "provider", "baseUrl", "model", "apiKey"];
 function restoreSettings() {
   const s = load(LS_SET, {});
   if (!s.provider) { s.provider = "deepseek"; Object.assign(s, PRESETS.deepseek); }
   // DeepSeek retired these names on 2026-07-24; requests with them now fail.
   if (/^deepseek-(chat|reasoner)$/.test(s.model || "")) { s.model = PRESETS.deepseek.model; save(LS_SET, s); }
+  // One-time move to the lighter default (8 words per article); the old default of 12 made
+  // articles too dense once each word had to appear twice.
+  if (!s.densityV2) { if (+s.per > 8) s.per = "8"; s.densityV2 = true; save(LS_SET, s); }
   for (const id of settingIds) if (s[id] != null) $(id).value = s[id];
   $("settingsBox").open = !s.apiKey;
 }
 function persistSettings() {
   const s = {};
   for (const id of settingIds) s[id] = $(id).value;
+  s.densityV2 = true;
   save(LS_SET, s);
   updateKeyState();
 }
@@ -690,18 +717,300 @@ function toLines(items) {
   });
 }
 
-async function parseBbdcPdf(file) {
+// Generic word list: one word per visual line, e.g. "12  facility  n.  设施；便利" or
+// "abandon v. 放弃". Lines are rebuilt from text positions, then each line is split into
+// optional index, English headword, optional part of speech, and the meaning.
+const POS_RE = /^(?:n|v|vt|vi|adj|adv|prep|conj|pron|int|interj|num|art|aux|modal|abbr|pl|phr|vlink)\.?(?:\s*[\/&,]\s*(?:n|v|vt|vi|adj|adv|prep|conj|pron|num)\.?)*$/i;
+function parseGenericLines(lines) {
+  const out = [];
+  let last = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^(?:\d+[.、)]?\s+)?([A-Za-z][A-Za-z'’\-]*(?:\s[A-Za-z][A-Za-z'’\-]*){0,3})\s+(.+)$/);
+    if (m) {
+      let word = m[1], rest = m[2].trim();
+      // A multi-word headword may have swallowed the part of speech: "take over v. 接管".
+      const parts = word.split(" ");
+      if (parts.length > 1 && POS_RE.test(parts[parts.length - 1])) { rest = parts.pop() + " " + rest; word = parts.join(" "); }
+      // Need some Chinese, or a part of speech, to count as a word row (skips titles like "CET-4 Vocabulary").
+      if (/[一-鿿]/.test(rest) || POS_RE.test(rest.split(/\s+/)[0])) {
+        last = { word, meaning: rest.replace(/\s{2,}/g, " ") };
+        out.push(last);
+        continue;
+      }
+    }
+    // A Chinese-only line right under a word row continues its meaning.
+    if (last && /^[一-鿿（(]/.test(line) && !/^(序号|单词|词性|释义)/.test(line)) last.meaning += "；" + line;
+    else last = null;
+  }
+  // Drop header-ish rows and duplicates.
+  const seen = new Set();
+  return out.filter((w) => {
+    const k = w.word.toLowerCase();
+    if (/^(word|words|meaning|vocabulary|no)$/i.test(w.word) || seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+}
+
+async function readPdfPages(file) {
   const pdfjs = await loadPdfJs();
   const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  const words = [];
-  let total = null;
+  const pages = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
-    const width = page.view[2] - page.view[0];
     const tc = await page.getTextContent();
-    const items = tc.items
-      .filter((i) => i.str && i.str.trim())
-      .map((i) => ({ str: fixCJK(i.str), x: i.transform[4], y: i.transform[5] }));
+    pages.push({
+      page,
+      width: page.view[2] - page.view[0],
+      items: tc.items.filter((i) => i.str && i.str.trim())
+        .map((i) => ({ str: fixCJK(i.str), x: i.transform[4], y: i.transform[5] })),
+    });
+  }
+  return pages;
+}
+
+/* ---- AI fallback: anything the local parsers can't handle ----
+   Text layer present (articles, textbooks, odd word-list layouts): send the text.
+   No text layer (scans, photos saved as PDF): render pages to JPEG and send the images. */
+const AI_MAX_PAGES = 8;
+const AI_MAX_CHARS = 24000;
+const AI_MAX_WORDS = 40;
+
+function aiExtractPrompt(kind) {
+  return `The learner (a Chinese student preparing for 四六级/考研) uploaded a document ${kind}. Extract English vocabulary to study.
+
+- If it is a WORD LIST (words with meanings, any layout): return every English headword in order, with its Chinese meaning as written (include part of speech if shown). Do not invent or skip entries.
+- If it is ordinary English TEXT (article, textbook, exam passage): pick up to ${AI_MAX_WORDS} words or short phrases worth studying at 四六级/考研 level. Skip very common words (the, make, good, people) and proper nouns. Use the base form (mitigates -> mitigate). Give a concise Chinese meaning that fits how it is used in the text, with part of speech.
+
+Reply with JSON only: {"type": "wordlist" or "text", "words": [{"word": "mitigate", "meaning": "v. 减轻，缓和"}]}`;
+}
+
+async function pageImages(pages) {
+  const out = [];
+  for (const { page } of pages.slice(0, AI_MAX_PAGES)) {
+    const vp1 = page.getViewport({ scale: 1 });
+    const scale = Math.min(2, 1400 / Math.max(vp1.width, vp1.height));   // ~1300px long side is what the model uses
+    const vp = page.getViewport({ scale });
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    out.push(cv.toDataURL("image/jpeg", 0.85));
+  }
+  return out;
+}
+
+// Words too basic to be worth a slot, in case the model picks them from an article anyway.
+const COMMON = new Set(("the a an and or but if of to in on at by for with from as is are was were be been being have has had do does did " +
+  "this that these those it its they them their he she his her we our you your i me my not no yes so very " +
+  "make good people time year day way thing man woman child world life hand part place work week say get go know take see come think look want give use find tell").split(" "));
+
+function parseAiWords(text) {
+  const t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  let obj = null;
+  try { obj = JSON.parse(t.slice(a, b + 1)); } catch {}
+  const seen = new Set();
+  const words = (obj?.words || [])
+    .map((w) => ({ word: String(w.word || "").trim(), meaning: String(w.meaning || "").trim() }))
+    .filter((w) => /^[A-Za-z][A-Za-z'’\- ]{0,40}$/.test(w.word))
+    .filter((w) => !COMMON.has(w.word.toLowerCase()))
+    .filter((w) => { const k = w.word.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return { words, type: obj?.type === "text" ? "text" : "wordlist" };
+}
+
+async function aiReadPdf(pages, onStatus) {
+  const text = pages.map((pg) => toLines(pg.items).map((l) => l.text).join("\n")).join("\n\n").trim();
+  const englishChars = (text.match(/[A-Za-z]/g) || []).length;
+  let reply, via;
+  if (englishChars >= 80) {
+    onStatus("正在让 AI 从 PDF 文字里挑单词…");
+    via = "text";
+    reply = await callModel(`${aiExtractPrompt("whose text is below")}\n\nPDF text:\n${text.slice(0, AI_MAX_CHARS)}`);
+  } else {
+    if (!visionCapable()) throw new UserError("这个 PDF 是扫描件或图片，需要能看图的模型才能识别。当前模型不支持看图：DeepSeek 用 deepseek-flash，Claude 和 OpenAI 的模型一般都可以。");
+    onStatus(`这是扫描件，正在让 AI 看图识别（${Math.min(pages.length, AI_MAX_PAGES)} 页）…`);
+    via = "image";
+    reply = await callModel(aiExtractPrompt("as page images"), await pageImages(pages));
+  }
+  return { ...parseAiWords(reply), via, truncated: via === "image" ? pages.length > AI_MAX_PAGES : text.length > AI_MAX_CHARS };
+}
+function visionCapable() {
+  const m = $("model").value.trim().toLowerCase();
+  if ($("provider").value === "deepseek") return m === "deepseek-flash" || m.includes("vision");
+  if ($("provider").value === "qwen") return /vl|omni|qwen3\.\d|qwen-plus/.test(m);
+  return true;
+}
+
+// A local parse is trusted when it found a real list; a handful of hits from an article usually
+// means the line parser matched sentences, so hand those to the AI instead.
+function localLooksGood(r, pages) {
+  if (r.format === "bbdc") return r.words.length > 0;
+  const lines = pages.reduce((n, pg) => n + toLines(pg.items).length, 0);
+  return r.words.length >= 5 && r.words.length >= lines * 0.35;
+}
+function linesLookGood(words, lines) {
+  const n = lines.filter((l) => l.trim()).length;
+  return words.length >= 5 && words.length >= n * 0.35;
+}
+
+/* ---------------- other document formats ----------------
+   Each reader turns a file into plain text lines (Word, TXT, CSV, Excel) or images (photos,
+   screenshots). Lines go through the same word-list parser as PDFs; if that doesn't find a
+   list, the text goes to the AI, which also handles articles and textbooks. */
+function loadScript(urls, globalName, label) {
+  if (window[globalName]) return Promise.resolve(window[globalName]);
+  loadScript.cache = loadScript.cache || {};
+  if (loadScript.cache[globalName]) return loadScript.cache[globalName];
+  return (loadScript.cache[globalName] = (async () => {
+    for (const u of urls) {
+      try {
+        await new Promise((ok, fail) => { const s = document.createElement("script"); s.src = u; s.onload = ok; s.onerror = fail; document.head.append(s); });
+        if (window[globalName]) return window[globalName];
+      } catch {}
+    }
+    loadScript.cache[globalName] = null;
+    throw new UserError(`读取${label}需要联网加载解析组件，但没能加载成功。检查网络后再试，或者手动复制单词粘贴进来。`);
+  })());
+}
+const loadMammoth = () => loadScript([
+  "https://cdn.staticfile.net/mammoth/1.8.0/mammoth.browser.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js",
+  "https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"], "mammoth", " Word 文档");
+const loadXlsx = () => loadScript([
+  "https://cdn.staticfile.net/xlsx/0.18.5/xlsx.full.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+  "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"], "XLSX", " Excel 表格");
+
+const FILE_KINDS = [
+  { kind: "pdf",   label: "PDF",        re: /\.pdf$/i,               mime: /pdf/ },
+  { kind: "docx",  label: "Word 文档",  re: /\.docx$/i,              mime: /wordprocessingml/ },
+  { kind: "sheet", label: "表格",       re: /\.(xlsx|xls|csv|tsv)$/i, mime: /spreadsheet|ms-excel|csv|tab-separated/ },
+  { kind: "text",  label: "文本文件",   re: /\.(txt|text|md)$/i,     mime: /^text\/plain/ },
+  { kind: "image", label: "图片",       re: /\.(jpe?g|png|webp|gif)$/i, mime: /^image\/(jpeg|png|webp|gif)/ },
+];
+const ACCEPT = ".pdf,.docx,.txt,.md,.csv,.tsv,.xlsx,.xls,.jpg,.jpeg,.png,.webp,.gif";
+const kindOf = (f) => FILE_KINDS.find((k) => k.re.test(f.name) || k.mime.test(f.type || ""));
+
+function decodeText(buf) {
+  // Chinese Windows tools often save TXT/CSV as GBK; fall back to it when UTF-8 shows replacement chars.
+  const utf8 = new TextDecoder("utf-8").decode(buf);
+  if (!utf8.includes("�")) return utf8.replace(/^﻿/, "");
+  try { return new TextDecoder("gbk").decode(buf); } catch { return utf8; }
+}
+
+async function readAsLines(file, kind) {
+  if (kind === "text") return decodeText(await file.arrayBuffer()).split(/\r?\n/);
+  if (kind === "docx") {
+    const mammoth = await loadMammoth();
+    // HTML keeps table cells separate, so a Word table becomes one row per line.
+    const { value } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+    const doc = new DOMParser().parseFromString(value, "text/html");
+    const lines = [];
+    doc.body.querySelectorAll("tr, p, li, h1, h2, h3, h4").forEach((el) => {
+      if (el.closest("tr") && el.tagName !== "TR") return;
+      const t = el.tagName === "TR"
+        ? [...el.children].map((c) => c.textContent.trim()).filter(Boolean).join("  ")
+        : el.textContent.trim();
+      if (t) lines.push(t);
+    });
+    return lines;
+  }
+  if (kind === "sheet") {
+    if (/\.(csv|tsv)$/i.test(file.name)) {
+      const sep = /\.tsv$/i.test(file.name) ? "\t" : ",";
+      return decodeText(await file.arrayBuffer()).split(/\r?\n/)
+        .map((l) => l.split(sep).map((c) => c.replace(/^"|"$/g, "").trim()).filter(Boolean).join("  "));
+    }
+    const XLSX = await loadXlsx();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    return wb.SheetNames.flatMap((n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, blankrows: false })
+      .map((row) => row.map((c) => String(c ?? "").trim()).filter(Boolean).join("  ")));
+  }
+  return [];
+}
+
+async function fileToDataUrl(file) {
+  // Re-encode as JPEG and cap the size: phone photos are often 4000px+ and several MB.
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = url; });
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(img.naturalWidth * scale); cv.height = Math.round(img.naturalHeight * scale);
+    const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    return cv.toDataURL("image/jpeg", 0.88);
+  } catch { throw new UserError("这张图片打不开，换一张 JPG 或 PNG 试试。"); }
+  finally { URL.revokeObjectURL(url); }
+}
+
+function needKey(label) {
+  if ($("apiKey").value.trim()) return;
+  throw new UserError(`这个${label}需要 AI 帮忙识别。先在「API 设置」里填好 Key 再导入。`);
+}
+
+async function aiFromText(text, label, onStatus) {
+  needKey(label);
+  onStatus(`正在让 AI 从${label}里挑单词…`);
+  const reply = await callModel(`${aiExtractPrompt("whose text is below")}\n\nText:\n${text.slice(0, AI_MAX_CHARS)}`);
+  return { ...parseAiWords(reply), via: "text", truncated: text.length > AI_MAX_CHARS };
+}
+
+async function parseWordFile(file, onStatus = () => {}) {
+  const k = kindOf(file);
+  if (!k) throw new UserError(`不支持这种文件：${file.name}。可以用 PDF、Word（.docx）、TXT、Excel、CSV，或者 JPG / PNG 图片。`);
+  if (k.kind === "pdf") return parseWordPdf(file, onStatus);
+  if (k.kind === "image") {
+    needKey("图片");
+    if (!visionCapable()) throw new UserError("识别图片需要能看图的模型。DeepSeek 用 deepseek-flash，Claude 和 OpenAI 的模型一般都可以。");
+    onStatus("正在让 AI 看图识别…");
+    const ai = parseAiWords(await callModel(aiExtractPrompt("as an image (photo or screenshot)"), [await fileToDataUrl(file)]));
+    return { words: ai.words, total: null, format: "ai", aiType: ai.type, via: "image", truncated: false };
+  }
+  const lines = await readAsLines(file, k.kind);
+  const local = parseGenericLines(lines);
+  if (linesLookGood(local, lines)) return { words: local, total: null, format: "generic" };
+  const text = lines.join("\n").trim();
+  if ((text.match(/[A-Za-z]/g) || []).length < 20) {
+    if (local.length) return { words: local, total: null, format: "generic" };
+    throw new UserError(`这个${k.label}里没有找到英文内容。`);
+  }
+  if (!$("apiKey").value.trim() && local.length) return { words: local, total: null, format: "generic" };
+  const ai = await aiFromText(text, k.label, onStatus);
+  if (!ai.words.length && local.length) return { words: local, total: null, format: "generic" };
+  return { words: ai.words, total: null, format: "ai", aiType: ai.type, via: "text", truncated: ai.truncated };
+}
+
+async function parseWordPdf(file, onStatus = () => {}) {
+  const pages = await readPdfPages(file);
+  const isBbdc = pages.some((pg) => pg.items.some((i) => /^(Word|Meaning)$/.test(i.str.trim())))
+    && pages.some((pg) => pg.items.some((i) => /共\s*\d+\s*词|近日已学|不背单词/.test(i.str)));
+  let local = null;
+  if (isBbdc) {
+    const r = parseBbdcPages(pages);
+    if (r.words.length) local = { ...r, format: "bbdc" };
+  }
+  if (!local) {
+    const lines = pages.flatMap((pg) => toLines(pg.items).map((l) => l.text));
+    local = { words: parseGenericLines(lines), total: null, format: "generic" };
+  }
+  if (localLooksGood(local, pages)) return local;
+  if (!$("apiKey").value.trim()) {
+    if (local.words.length) return local;
+    throw new UserError("这个 PDF 不是常见的单词表格式，需要 AI 帮忙识别。先在「API 设置」里填好 Key 再导入。");
+  }
+  const ai = await aiReadPdf(pages, onStatus);
+  if (!ai.words.length && local.words.length) return local;
+  return { words: ai.words, total: null, format: "ai", aiType: ai.type, via: ai.via, truncated: ai.truncated };
+}
+
+function parseBbdcPages(pages) {
+  const words = [];
+  let total = null;
+  for (const { width, items } of pages) {
 
     // Column positions come from the "Word / Meaning" header row; fall back to the A4 layout.
     const heads = items.filter((i) => /^(Word|Meaning)$/.test(i.str.trim()));
@@ -746,9 +1055,15 @@ async function parseBbdcPdf(file) {
 async function importPdf(file, auto = false) {
   const msg = $("importMsg");
   msg.hidden = false; msg.className = "count"; msg.textContent = `正在读取 ${file.name}…`;
+  const status = (t) => {
+    msg.textContent = t;
+    // In the one-click flow the drawer is closed, so show progress on the page too.
+    if (auto) $("sheet").innerHTML = `<div class="loading">${buddy(esc(t), "AI 识别通常需要 10 到 30 秒。", { wave: "live" })}</div>`;
+  };
   try {
-    const { words, total } = await parseBbdcPdf(file);
-    if (!words.length) throw new UserError("这个 PDF 里没有找到单词。目前只支持不背单词导出的单词表 PDF。");
+    const r = await parseWordFile(file, status);
+    const { words, total } = r;
+    if (!words.length) throw new UserError("这个文件里没有读到英文单词。可以换一份文件，或者手动把单词粘贴进来。");
     $("words").value = words.map((w) => `${w.word}  ${w.meaning}`).join("\n");
     updateCount();
     persistWords();
@@ -756,8 +1071,13 @@ async function importPdf(file, auto = false) {
     if (short) {
       msg.className = "count bad";
       msg.textContent = `PDF 写的是 ${total} 词，只读出了 ${words.length} 个，请核对一下。`;
+    } else if (r.format === "ai") {
+      msg.innerHTML = r.aiType === "text"
+        ? `AI 从文章里挑出了 <b>${words.length}</b> 个值得背的词，可以在下面删改`
+        : `AI 识别出 <b>${words.length}</b> 个单词${r.via === "image" ? "（看图识别，建议核对一下）" : ""}`;
+      if (r.truncated) msg.innerHTML += `。文件太长，只读了前 ${r.via === "image" ? AI_MAX_PAGES + " 页" : "一部分"}`;
     } else {
-      msg.innerHTML = `已从 PDF 导入 <b>${words.length}</b> 个单词`;
+      msg.innerHTML = `已从 ${(kindOf(file) || { label: "文件" }).label} 导入 <b>${words.length}</b> 个单词`;
     }
     if (auto && !short) generate();
     else if (auto) setDrawer(true);
@@ -777,7 +1097,7 @@ $("pdfFile").addEventListener("change", (ev) => {
   ev.target.value = "";
 });
 const ta = $("words");
-const pdfOf = (ev) => [...(ev.dataTransfer?.files || [])].find((x) => /\.pdf$/i.test(x.name) || x.type === "application/pdf");
+const pdfOf = (ev) => [...(ev.dataTransfer?.files || [])].find((x) => kindOf(x));
 ta.addEventListener("dragover", (ev) => { ev.preventDefault(); ta.classList.add("drag"); });
 ta.addEventListener("dragleave", () => ta.classList.remove("drag"));
 ta.addEventListener("drop", (ev) => {
@@ -802,15 +1122,50 @@ ta.addEventListener("change", persistWords);
 
 function updateCount() {
   const list = parseWords($("words").value);
-  const per = +$("per").value;
+  document.body.classList.toggle("mode-nights", isNights($("genre").value));
+  $("go").textContent = isNights($("genre").value) ? "写今晚的故事" : "生成短文";
   if (!list.length) { $("count").textContent = "还没有单词"; return; }
-  const n = Math.ceil(list.length / per);
-  let due = 0;
-  try { due = Math.min(dueWords(list).length, n * REVIEW_PER_ARTICLE); } catch {}   // bank not loaded yet
-  $("count").innerHTML = `识别到 <b>${list.length}</b> 个单词，将生成 <b>${n}</b> 篇短文${due ? `，另外混入 <b>${due}</b> 个复习词` : ""}`;
+  document.body.classList.toggle("mode-nights", isNights($("genre").value));
+  $("go").textContent = isNights($("genre").value) ? "写今晚的故事" : "生成短文";
+  if (isNights($("genre").value)) {
+    let p; try { p = planNight(list); } catch { p = null; }
+    if (!p) { $("count").innerHTML = `识别到 <b>${list.length}</b> 个单词`; return; }
+    const night = (typeof nights === "object" ? nights.count : 0) + 1;
+    if (p.reviewNight) {
+      $("count").innerHTML = p.groups.length
+        ? `这些词都写进过故事了。第 ${night} 夜会用 <b>${p.pick.length}</b> 个该复习的词写一晚`
+        : `这些词都写进过故事了，今天也没有该复习的词`;
+      return;
+    }
+    $("count").innerHTML = `识别到 <b>${list.length}</b> 个单词。第 ${night} 夜用最新的 <b>${p.pick.length}</b> 个，分 ${p.groups.length} 段，共约 <b>${p.groups.length * 400}</b> 词`
+      + (p.due.length ? `，另外混入 <b>${p.due.length}</b> 个复习词` : "")
+      + (p.rest.length ? `。其余 ${p.rest.length} 个进入复习计划` : "");
+    return;
+  }
+  let plan;
+  try { plan = planToday(list); } catch { plan = null; }   // word bank not loaded yet on first paint
+  if (!plan) { $("count").innerHTML = `识别到 <b>${list.length}</b> 个单词`; return; }
+  const n = Math.max(1, plan.groups.length);
+  const opts = { length: $("length").value, genre: $("genre").value };
+  const rv = Math.max(0, Math.min(REVIEW_PER_ARTICLE, Math.ceil(plan.due.length / n) || 0));
+  const len = targetLength(plan.groups[0] || [], opts, Array(rv).fill({}));
+  if (!plan.pick.length) {
+    $("count").innerHTML = `识别到 <b>${list.length}</b> 个单词，都已经写过文章了` + (plan.due.length ? `。点生成会写一篇复习文章，用到 <b>${plan.due.length}</b> 个该复习的词` : "，今天没有新词要写");
+    return;
+  }
+  const head = plan.rest.length
+    ? `识别到 <b>${list.length}</b> 个单词，今天先写最新的 <b>${plan.pick.length}</b> 个，共 <b>${n}</b> 篇，每篇约 <b>${len}</b> 词`
+    : `识别到 <b>${list.length}</b> 个单词，将生成 <b>${n}</b> 篇短文，每篇约 <b>${len}</b> 词`;
+  const tail = plan.rest.length ? `。其余 ${plan.rest.length} 个已加入复习计划，会按时混进之后的文章` : "";
+  $("count").innerHTML = head + (plan.due.length ? `，另外混入 <b>${plan.due.length}</b> 个复习词` : "") + tail;
 }
 $("words").addEventListener("input", updateCount);
 $("per").addEventListener("change", updateCount);
+$("length").addEventListener("change", updateCount);
+$("maxArticles").addEventListener("change", updateCount);
+$("genre").addEventListener("change", updateCount);
+
+const isNights = (g) => g === "nights";
 
 /* ---------------- prompt + API ---------------- */
 // Genre-specific craft notes. Generic "write a story" prompts are what make cheaper models sound
@@ -839,14 +1194,30 @@ const STYLE_RULES = `Style rules (these matter as much as using the words):
 
 // The learner also wants exam-writing value (四六级/考研作文), so useful set phrases are allowed
 // in moderation and taught explicitly. How many depends on the genre.
+// Fewer than before: with two uses per word plus review words, more phrases made texts read
+// like a checklist. Essay-style genres get a couple; narrative genres get one.
 const PHRASE_COUNT = {
-  "an argumentative essay like an exam reading passage": "3 to 4",
-  "a news report": "2 to 3",
-  "a popular-science article": "2 to 3",
+  "an argumentative essay like an exam reading passage": "2",
+  "a news report": "1 to 2",
+  "a popular-science article": "1 to 2",
 };
 function phraseRule(opts) {
-  const n = PHRASE_COUNT[opts.genre] || "1 to 2";
-  return `6. Work in ${n} set phrases or sentence patterns that score well in Chinese exam essays (四六级/考研作文), such as "play a crucial role in", "It is widely acknowledged that", "not only ... but also", "There is no denying that", "be closely related to", "In conclusion". Use them where they fit naturally, never stacked together. Mark each one as [[phrase as written]]. List them in "phrases" with the base form, a Chinese meaning, and one short Chinese tip on how to use it in an essay.`;
+  const n = PHRASE_COUNT[opts.genre] || "1";
+  return `6. Work in ${n} set phrases or sentence patterns that score well in Chinese exam essays (四六级/考研作文), such as "play a crucial role in", "It is widely acknowledged that", "not only ... but also", "There is no denying that", "be closely related to", "In conclusion". Use them where they fit naturally, never stacked together. In the TEXT, wrap each one exactly as written in double square brackets, e.g. "Tom [[not only]] cleared the path [[but also]] fixed the gate." List in "phrases" ONLY phrases that you actually wrapped in the text, with the base form, a Chinese meaning, and one short Chinese tip on how to use it in an essay.
+
+Before replying, check your own text: count the {{...}} marks for each target word (every one must be 2 or more) and the [[...]] marks (must be ${n}). Fix it if not.`;
+}
+
+// Room for every required use. About one required word per 18 running words (two or three
+// ordinary sentences between them) still reads like prose; denser than that it turns into a
+// word list. The chosen length is a floor, not a cap.
+const WORDS_PER_USE = 18;
+function requiredUses(words, review = [], opts = {}) {
+  const phrases = +String(PHRASE_COUNT[opts.genre] || "1").split(" ").pop();
+  return words.length * 2 + review.length + phrases;
+}
+function targetLength(words, opts, review = []) {
+  return Math.max(+opts.length || 250, Math.ceil(requiredUses(words, review, opts) * WORDS_PER_USE / 50) * 50);
 }
 
 function reviewBlock(review) {
@@ -855,7 +1226,8 @@ function reviewBlock(review) {
   return `
 Review words (learned on earlier days, due for spaced review):
 ${list}
-Use each review word ONCE, naturally. Mark them the same way: {{surface form|review word}}. Do not add them to "glossary" or the quiz.
+Use each review word ONCE, naturally. Mark them the same way: {{surface form|review word}}. Do not add them to "glossary".
+For EACH review word, also add one extra quiz question that tests it (see the quiz rule), with "review": true.
 `;
 }
 
@@ -866,7 +1238,7 @@ function buildPrompt(words, opts, review = []) {
 
 ${list}
 ${reviewBlock(review)}
-Write ${opts.genre}, about ${opts.length} English words long, at the level of ${opts.level}.${opts.topic ? ` Topic: ${opts.topic}.` : ""}
+Write ${opts.genre}, about ${targetLength(words, opts, review)} English words long, at the level of ${opts.level}.${opts.topic ? ` Topic: ${opts.topic}.` : ""}
 ${craft ? `\nWhat good writing in this form looks like: ${craft}\n` : ""}
 Before writing, silently decide on one situation in which all of these words could plausibly come up, and build the text around it.
 
@@ -875,7 +1247,7 @@ Rules:
 2. Mark every occurrence of a target word as {{surface form|target word}}, where "target word" is copied exactly from the list. Example: She {{abandoned|abandon}} the plan.
 3. Apart from the target words, keep the vocabulary at or below the stated level.
 4. Give a natural Chinese translation for each paragraph (意译，不要逐词硬译).
-5. Write 4 multiple-choice fill-in-the-blank questions. Each uses a NEW sentence (not copied from the passage) with "____" for the blank, and 4 options drawn from the target words. Exactly ONE option may fit grammatically and in meaning; check the other three are clearly wrong. "answer" is the 0-based index of the correct option.
+5. Write 4 multiple-choice fill-in-the-blank questions on the target words${review.length ? `, then ${review.length} more, one per review word (${review.map((w) => w.word).join(", ")}), each with "review": true and the review word as the correct option` : ""}. Each uses a NEW sentence (not copied from the passage) with "____" for the blank, and 4 options drawn from the target${review.length ? " and review" : ""} words. Exactly ONE option may fit grammatically and in meaning; check the other three are clearly wrong. "answer" is the 0-based index of the correct option.
 ${phraseRule(opts)}
 
 ${STYLE_RULES}
@@ -887,20 +1259,85 @@ Reply with JSON only, no markdown fences, in exactly this shape:
   "translation": ["第一段中文翻译", "..."],
   "glossary": [{"word": "target word", "pos": "v.", "meaning": "在本文中的中文意思", "note": "常见搭配或用法，简短中文，可为空"}],
   "phrases": [{"phrase": "play a crucial role in", "meaning": "在……中起关键作用", "tip": "作文中怎么用，一句中文"}],
-  "quiz": [{"question": "sentence with ____", "options": ["a","b","c","d"], "answer": 0, "explain": "中文解析"}]
+  "quiz": [{"question": "sentence with ____", "options": ["a","b","c","d"], "answer": 0, "explain": "中文解析"}${review.length ? `, {"question": "...", "options": [...], "answer": 2, "explain": "...", "review": true}` : ""}]
 }`;
 }
 
 // Second pass: the model edits its own draft against a checklist. Most of the quality gap between
 // cheap and expensive models is first-draft polish, which a focused revision pass recovers.
+// Deterministic check of the rules the model tends to skip. Returns concrete, countable problems
+// so the editor gets "add a second use of X" instead of a rule it already ignored once.
+const PHRASE_MIN = {
+  "an argumentative essay like an exam reading passage": 2,
+};
+function auditArticle(art, words, opts, review = []) {
+  const counts = markCounts(art);
+  const once = words.filter((w) => (counts.get(w.word.toLowerCase()) || 0) === 1).map((w) => w.word);
+  const missing = words.filter((w) => !counts.get(w.word.toLowerCase())).map((w) => w.word);
+  const reviewMissing = review.filter((w) => !counts.get(w.word.toLowerCase())).map((w) => w.word);
+  const inText = (art.paragraphs.join(" ").match(/\[\[[^\[\]]+\]\]/g) || []).length;
+  const phraseMin = PHRASE_MIN[opts.genre] || 1;
+  const problems = [];
+  if (missing.length) problems.push(`These target words are missing entirely: ${missing.join(", ")}. Add each one TWICE.`);
+  if (once.length) problems.push(`These target words appear only ONCE: ${once.join(", ")}. Add a second, natural use of each in a different sentence (preferably a later paragraph), marked {{surface|word}}.`);
+  if (reviewMissing.length) problems.push(`These review words are missing: ${reviewMissing.join(", ")}. Use each once.`);
+  const untested = review.filter((w) => !reviewQuestionFor(art, w.word)).map((w) => w.word);
+  if (untested.length) problems.push(`These review words have no quiz question: ${untested.join(", ")}. Add one fill-in-the-blank question for each, with "review": true and that word as the correct option.`);
+  // Too dense: required words packed tighter than one per ~12 running words, or several
+  // target words crammed into one sentence.
+  const plain = art.paragraphs.join(" ").replace(/\{\{([^{}|]+)\|[^{}]+\}\}/g, "$1").replace(/\[\[|\]\]/g, "");
+  const runWords = (plain.match(/[A-Za-z'’-]+/g) || []).length;
+  const marks = [...counts.values()].reduce((s, n) => s + n, 0);
+  if (marks && runWords / marks < 12) problems.push(`The text is too dense: ${marks} marked words in only ${runWords} running words. Add ordinary sentences (description, dialogue, action) between them so there are about ${WORDS_PER_USE} words per marked word; target about ${Math.ceil(marks * WORDS_PER_USE / 50) * 50} words in total.`);
+  const crammed = art.paragraphs.join(" ").split(/(?<=[.!?])\s+/).filter((s) => (s.match(/\{\{/g) || []).length >= 3);
+  if (crammed.length) problems.push(`${crammed.length} sentence(s) contain three or more marked words, e.g. "${crammed[0].replace(/\{\{([^{}|]+)\|[^{}]+\}\}/g, "$1").slice(0, 120)}". Split them so each sentence has at most two.`);
+  if (inText < phraseMin) problems.push(`Only ${inText} exam set phrase(s) are marked [[...]] in the text; at least ${phraseMin} are required. Weave them into sentences that are already there. Every entry in "phrases" must appear in the text marked [[...]]; remove entries that don't.`);
+  return { problems, ok: !problems.length };
+}
+
+// The quiz question that tests a given review word: its correct option is that word (or an
+// inflected form of it). Matching on the answer, not the "review" flag, so it still works when
+// the model forgets the flag.
+function reviewQuestionFor(art, word) {
+  const w = String(word).toLowerCase();
+  const stem = (s) => s.toLowerCase().replace(/(ies|es|s|ed|ing|d)$/, "");
+  return (art.quiz || []).findIndex((q) => {
+    const ans = String(q.options?.[+q.answer] ?? "").toLowerCase().trim();
+    return ans === w || (ans.length > 3 && stem(ans) === stem(w)) || ans.startsWith(w);
+  }) + 1 || 0;   // 1-based index, 0 = none
+}
+
+// Keep only the essay phrases that really appear in the text, so the list never lies.
+function syncPhrases(art) {
+  const inText = (art.paragraphs.join(" ").match(/\[\[([^\[\]]+)\]\]/g) || []).map((s) => s.slice(2, -2).toLowerCase());
+  // A listed phrase counts as used if each of its pieces ("not only", "but also") appears in some
+  // marked span. Placeholders like sb/sth/doing and inflection on the first verb are tolerated.
+  const norm = (s) => s.replace(/\b(sb|sth|someone|something|one's|doing|do)\b/g, " ").replace(/[^a-z' ]/g, " ").replace(/\s+/g, " ").trim();
+  const stem = (w) => w.replace(/(ies|es|s|ed|ing)$/, "");
+  const used = (p) => {
+    const pieces = String(p.phrase).toLowerCase().split(/\.\.\.|…/).map(norm).filter(Boolean);
+    return pieces.length > 0 && pieces.every((piece) => {
+      const ws = piece.split(" ").map(stem);
+      return inText.some((t) => { const tw = norm(t).split(" ").map(stem); return ws.every((w) => tw.includes(w)); });
+    });
+  };
+  art.phrases = (art.phrases || []).filter(used);
+  return art;
+}
+
 function buildRevisePrompt(draft, words, opts, review = []) {
   const list = words.map((w) => w.word).join(", ");
   const rlist = review.map((w) => w.word).join(", ");
-  return `You are a demanding editor of graded readers for Chinese learners of English (level: ${opts.level}). Below is a draft JSON produced by a writer. Target words: ${list}.${rlist ? ` Review words (use once each, not in glossary or quiz): ${rlist}.` : ""}
-
-Revise it. Check and fix, in this order:
-1. Every target word must appear at least twice, in different sentences, all marked as {{surface|target}}. Add a natural second use where one is missing. Every review word must appear once, marked the same way. Do not remove any marked occurrence.
-2. Any target word used in an unnatural collocation or a sentence that exists only to contain it: rewrite that sentence so the word does real work.
+  const { problems } = auditArticle(draft, words, opts, review);
+  const must = problems.length
+    ? `\nAn automatic check found these problems. Fix ALL of them; this is the most important part of the job:\n${problems.map((p, i) => `  ${String.fromCharCode(65 + i)}. ${p}`).join("\n")}\n`
+    : "";
+  return `You are a demanding editor of graded readers for Chinese learners of English (level: ${opts.level}). Below is a draft JSON produced by a writer. Target words: ${list}.${rlist ? ` Review words (use once each in the text, not in glossary; each needs its own quiz question with "review": true): ${rlist}.` : ""}
+${must}
+Then revise it. Check and fix, in this order:
+1. Every target word must appear at least twice, in different sentences, all marked as {{surface|target}}. Every review word must appear once, marked the same way. Do not remove any marked occurrence. You may lengthen the text by up to 40% to make room.
+2. Any target word in an unnatural collocation or a sentence that exists only to contain it (e.g. "the legislative rules of the school"): rewrite so the word is used the way a native writer would, even if that means changing the situation in the sentence.
+2b. Factual errors (science, history, how things work): fix them. Example: water rises in plant stems by capillary action and transpiration, not gravity.
 3. Flat or generic writing: replace vague phrases with concrete detail; vary sentence length; cut any moral spelled out at the end. Remove empty filler ("delve", "tapestry", "a testament to", "embark on a journey"). KEEP the exam set phrases marked [[...]] (they are there on purpose for exam practice); only fix them if they are used incorrectly or several are stacked in one sentence. Keep "phrases" consistent with the [[...]] marks.
 4. Vocabulary above the level (other than target words): replace with simpler words.
 5. Grammar, idiom, and article/preposition mistakes.
@@ -914,7 +1351,8 @@ Draft:
 ${JSON.stringify(draft)}`;
 }
 
-async function callModel(prompt) {
+// images: optional array of data: URLs (JPEG/PNG), sent alongside the prompt for vision models.
+async function callModel(prompt, images = []) {
   const provider = $("provider").value;
   const base = $("baseUrl").value.trim().replace(/\/+$/, "");
   const model = $("model").value.trim();
@@ -933,15 +1371,20 @@ async function callModel(prompt) {
           "anthropic-version": "2023-06-01",
           "anthropic-dangerous-direct-browser-access": "true",
         },
-        body: JSON.stringify({ model, max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model, max_tokens: 8000, messages: [{ role: "user", content: images.length
+          ? [...images.map((u) => ({ type: "image", source: { type: "base64", media_type: u.slice(5, u.indexOf(";")), data: u.slice(u.indexOf(",") + 1) } })),
+             { type: "text", text: prompt }]
+          : prompt }] }),
       });
     } else {
       const body = {
         model,
-        temperature: 0.8,
+        temperature: images.length ? 0 : 0.8,
         messages: [
           { role: "system", content: "You reply with a single valid JSON object and nothing else." },
-          { role: "user", content: prompt },
+          { role: "user", content: images.length
+            ? [{ type: "text", text: prompt }, ...images.map((u) => ({ type: "image_url", image_url: { url: u } }))]
+            : prompt },
         ],
       };
       if (/api\.deepseek\.com/.test(base)) {
@@ -995,7 +1438,8 @@ function usedCount(art, words) {
   const c = markCounts(art);
   const covered = words.filter((w) => c.get(w.word.toLowerCase())).length;
   const twice = words.filter((w) => (c.get(w.word.toLowerCase()) || 0) >= 2).length;
-  return covered * 1000 + twice;
+  const phrases = Math.min((art.paragraphs.join(" ").match(/\[\[[^\[\]]+\]\]/g) || []).length, 9);
+  return covered * 1000 + twice * 10 + phrases;
 }
 
 function parseArticle(text) {
@@ -1022,11 +1466,11 @@ let plain = false;
 
 /* ---------------- word bank: spaced review ----------------
    Each word ever imported is stored with the day it was learned and a review stage.
-   A word is due when today >= due. Seeing it in an article moves it to the next interval;
-   getting it wrong in a quiz sends it back to "tomorrow". */
+   A word is due when today >= due. A due word is mixed into an article AND quizzed; only a
+   correct answer moves it to the next interval, a wrong one sends it back to "tomorrow". */
 const LS_BANK = "wordreader.bank.v1";
 const INTERVALS = [1, 2, 4, 7, 15, 30];       // days after each successful review
-const REVIEW_PER_ARTICLE = 3;
+const REVIEW_PER_ARTICLE = 2;
 let bank = load(LS_BANK, {});
 const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 function addDays(key, n) { const [y, m, d] = key.split("-").map(Number); return dayKey(new Date(y, m - 1, d + n)); }
@@ -1051,17 +1495,29 @@ function dueWords(exclude) {
     .filter((b) => b.due <= today && !skip.has(b.word.toLowerCase()))
     .sort((a, b) => (b.lapse ? 1 : 0) - (a.lapse ? 1 : 0) || a.due.localeCompare(b.due));
 }
-// A review word showed up in an article: advance its interval.
-function markReviewed(words) {
+// A review word was put into an article. Seeing it is not enough to count as reviewed: it is
+// parked until tomorrow (so today's other articles don't reuse it), and only a correct quiz
+// answer moves it to the next interval. If the quiz is never answered, it simply comes back
+// tomorrow at the same stage.
+function markShown(words) {
   const today = dayKey();
   for (const w of words) {
     const b = bank[w.word.toLowerCase()];
     if (!b || b.due > today) continue;
-    b.stage = Math.min(b.stage + 1, INTERVALS.length - 1);
-    b.due = addDays(today, INTERVALS[b.stage]);
+    b.due = addDays(today, 1);
     b.seen = (b.seen || 0) + 1;
-    b.lapse = false;
+    b.shownOn = today;
   }
+  saveBank();
+}
+// Quiz answered right: advance one interval, counted from today.
+function markRecalled(word) {
+  const b = bank[String(word || "").toLowerCase()];
+  if (!b) return;
+  b.stage = Math.min((b.lapse ? 0 : b.stage) + 1, INTERVALS.length - 1);
+  b.due = addDays(dayKey(), INTERVALS[b.stage]);
+  b.lapse = false;
+  b.recalled = (b.recalled || 0) + 1;
   saveBank();
 }
 // Quiz answered wrong: bring the word back tomorrow and restart its intervals.
@@ -1070,6 +1526,13 @@ function markMissed(word) {
   if (!b) return;
   b.stage = 0; b.due = addDays(dayKey(), 1); b.lapse = true;
   saveBank();
+}
+// Result for a word after a quiz answer, used in the feedback line under the question.
+function scheduleNote(word) {
+  const b = bank[String(word || "").toLowerCase()];
+  if (!b) return "";
+  const days = Math.round((new Date(b.due) - new Date(dayKey())) / 86400000);
+  return days <= 1 ? "明天再复习这个词" : `${days} 天后再复习`;
 }
 // Articles generated before the word bank existed: put their words in, scheduled from the day
 // they were learned, so they aren't lost.
@@ -1087,17 +1550,71 @@ function backfillBank() {
   }
   if (changed) saveBank();
 }
+// With a daily cap, choose which of the imported words get written into today's articles.
+// The learner adds new words every day, so a "write everything eventually" queue would grow
+// without end. Instead: newest words first (learned today, then yesterday...). A word that
+// wasn't written within CARRY_DAYS of being learned stops waiting for an article of its own;
+// it is already in the word bank, so spaced review mixes it into later articles and quizzes it.
+const CARRY_DAYS = 2;
+function pickToday(words, max) {
+  const today = dayKey();
+  const age = (b) => Math.round((new Date(today) - new Date(b.learned)) / 86400000);
+  const cands = [], toReview = [];
+  words.forEach((w, i) => {
+    const b = bank[w.word.toLowerCase()];
+    if (!b) { cands.push({ w, r: [0, i] }); return; }                 // brand new
+    if (b.written) { if (b.writtenOn !== today) toReview.push(w); return; }  // done; review handles it
+    if (age(b) > CARRY_DAYS) { toReview.push(w); return; }           // waited too long; review handles it
+    cands.push({ w, r: [age(b), i] });
+  });
+  cands.sort((a, b) => a.r[0] - b.r[0] || a.r[1] - b.r[1]);
+  const chosen = new Set(cands.slice(0, max).map((o) => o.w));
+  // Keep the chosen words in their original list order so related words stay together.
+  return {
+    pick: words.filter((w) => chosen.has(w)),
+    rest: cands.slice(max).map((o) => o.w),       // still waiting, may be picked tomorrow
+    toReview,
+  };
+}
+function markWritten(words) {
+  const today = dayKey();
+  for (const w of words) {
+    const b = bank[w.word.toLowerCase()];
+    if (b) { b.written = (b.written || 0) + 1; b.writtenOn = today; }
+  }
+  saveBank();
+}
+// Plan for today's run, shared by the generate button and the count line in the drawer.
+function planToday(words) {
+  const per = +$("per").value || 8;
+  const maxArt = +$("maxArticles").value || 3;
+  const cap = Math.min(words.length, per * maxArt);
+  const { pick, rest } = pickToday(words, cap);
+  // Nothing new to write (everything imported was already covered): one review-only article
+  // with more due words instead, so the button still does something useful.
+  if (!pick.length) {
+    const due = dueWords([]).slice(0, Math.max(4, REVIEW_PER_ARTICLE * 3));
+    return { pick, rest, groups: due.length ? [[]] : [], due, reviewOnly: true };
+  }
+  const groups = chunk(pick, per);
+  const due = dueWords(pick).slice(0, groups.length * REVIEW_PER_ARTICLE);
+  return { pick, rest, groups, due };
+}
+
 function bankStats() {
   const today = dayKey();
   const all = Object.values(bank);
   return { total: all.length, due: all.filter((b) => b.due <= today).length };
 }
 
+// Split into the fewest groups of at most n, sized as evenly as possible (84 at 8 -> 11 groups
+// of 7-8, not 10 of 8 plus one of 4). Uneven groups make some articles much denser than others.
 function chunk(arr, n) {
+  const groups = Math.max(1, Math.ceil(arr.length / n));
+  const base = Math.floor(arr.length / groups), extra = arr.length % groups;
   const out = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  // Avoid a tiny last chunk: merge into the previous one if it has fewer than 4 words.
-  if (out.length > 1 && out[out.length - 1].length < 4) out[out.length - 2].push(...out.pop());
+  let i = 0;
+  for (let g = 0; g < groups; g++) { const size = base + (g < extra ? 1 : 0); out.push(arr.slice(i, i + size)); i += size; }
   return out;
 }
 
@@ -1129,13 +1646,242 @@ async function generate() {
     levelLabel: $("level").selectedOptions[0].textContent,
     refine: true,
   };
-  const groups = chunk(words, +$("per").value);
-  // Hand out due review words across the articles, a few per article.
-  const due = dueWords(words).slice(0, groups.length * REVIEW_PER_ARTICLE);
+  // All imported words enter the word bank (so they get scheduled), but only today's share is
+  // written into articles; review words are handed out a few per article.
   learnWords(words);
-  await runBatch(groups.map((g, i) => ({ index: i, words: g,
-    review: due.slice(i * REVIEW_PER_ARTICLE, (i + 1) * REVIEW_PER_ARTICLE).map((b) => ({ word: b.word, meaning: b.meaning })) })),
-    opts, Date.now().toString(36));
+  if (isNights(opts.genre)) return generateNight(words, opts);
+  const plan = planToday(words);
+  const { groups, due, rest } = plan;
+  opts.restCount = rest.length;
+  const asWord = (b) => ({ word: b.word, meaning: b.meaning });
+  if (!groups.length) {
+    setDrawer(true);
+    $("importMsg").hidden = false; $("importMsg").className = "count";
+    $("importMsg").textContent = "这些词都已经写过文章了，今天也没有该复习的词。导入新的单词再生成吧。";
+    return;
+  }
+  // Review-only day: the due words become the article's words, so they are used twice and
+  // all of them get quiz questions; answering them advances their schedule as usual.
+  const tasks = plan.reviewOnly
+    ? [{ index: 0, words: due.map(asWord), review: [], reviewOnly: true }]
+    : groups.map((g, i) => ({ index: i, words: g,
+        review: due.slice(i * REVIEW_PER_ARTICLE, (i + 1) * REVIEW_PER_ARTICLE).map(asWord) }));
+  await runBatch(tasks, opts, Date.now().toString(36));
+}
+
+/* ================= 一千零一夜: one long installment per night =================
+   Why this form: a frame story with a fixed narrator and listener gives continuity (the reader
+   follows along night after night), while each night's inner tale can change setting freely, so
+   40 unrelated words fit naturally. Inside the tale, characters argue a case, read a letter or
+   explain how something works, which gives exam-style argumentative and expository passages
+   (考研阅读) alongside narrative.
+   Each night = 4 parts written in parallel from one shared outline, each part about 10 words
+   and ~400 running words, then joined into one ~1600-word text. The "story bible" (characters,
+   past tales, open threads) is kept in the browser and fed to every night so it stays coherent. */
+const LS_NIGHTS = "wordreader.nights.v1";
+const NIGHT_WORDS = 40;
+const NIGHT_PARTS = 4;
+const NIGHT_REVIEW = 6;
+let nights = load(LS_NIGHTS, { count: 0, frame: null, tales: [], hook: "" });
+const saveNights = () => save(LS_NIGHTS, nights);
+
+const PART_ROLES = [
+  { name: "开场", mode: "narrative", brief: "Frame: open tonight's session in the palace (one short scene with the narrator and the listener, picking up last night's hook). Then begin tonight's tale: set the place, the main character and what they want." },
+  { name: "发展", mode: "narrative", brief: "The tale develops: a complication, a journey or a discovery. Concrete scenes and some dialogue." },
+  { name: "辩论", mode: "argument", brief: "Inside the tale, characters must decide something important. Write it as a formal argument: one character makes a reasoned case (like a 考研 reading passage: thesis, evidence, an opposing view answered, a measured conclusion), another objects, possibly through a letter or a petition that is quoted in full." },
+  { name: "结尾", mode: "narrative", brief: "Resolve tonight's tale. Then return to the frame: a brief exchange between narrator and listener, and end on a new hook that makes the listener (and reader) want tomorrow night." },
+];
+
+function nightsFrameBlock() {
+  if (!nights.frame) {
+    return `This is NIGHT 1 of a new serial in the style of One Thousand and One Nights. Invent the frame: a narrator (a young storyteller) who must keep a powerful listener interested each night, a reason why it matters, and the palace setting. Keep it original (not a retelling of the classic), modern in tone, suitable for adult learners.`;
+  }
+  const last = nights.tales.slice(-5).map((t) => `  - Night ${t.night}: "${t.title}": ${t.summary}`).join("\n");
+  return `This is NIGHT ${nights.count + 1} of an ongoing serial in the style of One Thousand and One Nights.
+Frame story (keep consistent): ${nights.frame}
+Recent nights:
+${last || "  (none)"}
+Last night ended on this hook: ${nights.hook || "(none)"}
+Tonight's inner tale must be NEW (different place and characters from the recent nights), but the frame continues.`;
+}
+
+// One call that plans the whole night, so the four parts written in parallel fit together.
+function nightOutlinePrompt(groups, review, opts) {
+  return `You are planning tonight's installment of a graded-reader serial for Chinese students preparing for 考研/四六级 (level: ${opts.level}).
+${nightsFrameBlock()}
+
+Tonight is told in ${NIGHT_PARTS} consecutive parts, about 400 words each. Part roles:
+${PART_ROLES.map((r, i) => `  Part ${i + 1} (${r.mode}): ${r.brief}`).join("\n")}
+
+Each part must naturally use its own word list (the writer will use each word twice):
+${groups.map((g, i) => `  Part ${i + 1}: ${g.map((w) => w.word).join(", ")}`).join("\n")}
+${review.length ? `Review words, to appear once anywhere tonight: ${review.map((w) => w.word).join(", ")}` : ""}
+
+Plan the night so each part's words fit its events (choose situations that make those words natural).
+Reply with JSON only:
+{"title": "tonight's English title",
+ ${nights.frame ? "" : `"frame": "2-3 sentences describing the frame story, narrator and listener (names), and the stakes",\n `}"parts": [{"beats": "3-5 sentences: exactly what happens in this part, who speaks, which words go where"}],
+ "summary": "2 sentences summarizing tonight's tale (for continuity)",
+ "hook": "the cliffhanger the night ends on (1 sentence)"}`;
+}
+
+function nightPartPrompt(part, idx, outline, words, review, opts) {
+  const role = PART_ROLES[idx];
+  const prev = idx > 0 ? `Previous part (for continuity, do not repeat it): ${outline.parts[idx - 1]?.beats || ""}` : "";
+  const next = idx < NIGHT_PARTS - 1 ? `Next part will cover: ${outline.parts[idx + 1]?.beats || ""}` : "";
+  const craft = role.mode === "argument"
+    ? "This part is argumentative, like a 考研 reading passage spoken or written by a character: a clear claim, two pieces of concrete evidence, one opposing view stated fairly and answered, a measured conclusion. Use formal written English for the argument itself; keep the surrounding narration short."
+    : "Narrative: one or two concrete scenes, sensory detail, a few lines of natural dialogue, varied sentence length. Do not summarize what should be shown.";
+  const sub = { ...opts, genre: role.mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" };
+  const base = buildPrompt(words, sub, review)
+    .replace(/^You are an experienced writer[^\n]*\n/, `You are writing PART ${idx + 1} of ${NIGHT_PARTS} of tonight's installment ("${outline.title}") of a One Thousand and One Nights style serial for Chinese learners of English. The learner memorized these words today:\n`)
+    .replace(/Write [^\n]*English words long[^\n]*\n/, `Write about 400 English words for this part, at the level of ${opts.level}. It is one continuous section of a longer text: no title of its own, no summary of other parts.\n`)
+    .replace(/Before writing, silently decide[^\n]*\n/, `Story so far: ${nights.frame || outline.frame || ""}\nThis part: ${part.beats}\n${prev}\n${next}\nHow to write it: ${craft}\n`);
+  return base;
+}
+
+function nightsAvailable() { return isNights($("genre").value); }
+
+async function generateNight(words, opts) {
+  const plan = planNight(words);
+  if (!plan.groups.length) {
+    setDrawer(true);
+    $("importMsg").hidden = false; $("importMsg").className = "count";
+    $("importMsg").textContent = "这些词都已经写进故事了，今天也没有该复习的词。导入新的单词再生成吧。";
+    return;
+  }
+  const batchId = "n" + Date.now().toString(36);
+  batch = [];
+  job = { batchId, total: 1, done: 0, failed: [], running: true, opts };
+  $("go").disabled = true;
+  renderTabs();
+  const stage = (t, sub) => { $("sheet").className = "sheet"; $("sheet").innerHTML = `<div class="loading">${buddy(t, sub, { wave: "live" })}</div>`; };
+  const asWord = (b) => ({ word: b.word, meaning: b.meaning });
+  try {
+    stage(`第 ${nights.count + 1} 夜：正在构思今晚的故事…`, `今晚用 ${plan.pick.length} 个新词${plan.due.length ? `、${plan.due.length} 个复习词` : ""}，分 ${plan.groups.length} 段写，一共大约 ${plan.groups.length * 400} 词。通常需要 2 到 4 分钟。`);
+    const outlineRaw = await callModel(nightOutlinePrompt(plan.groups, plan.due, opts));
+    const outline = parseAiJson(outlineRaw);
+    if (!outline || !Array.isArray(outline.parts)) throw new UserError("构思今晚的故事时模型返回的格式不对，再点一次生成试试。", outlineRaw.slice(0, 400));
+    while (outline.parts.length < plan.groups.length) outline.parts.push({ beats: "Continue the tale naturally." });
+    // Review words go to the narrative parts first; the argument part is already dense.
+    const reviewFor = plan.groups.map(() => []);
+    plan.due.map(asWord).forEach((w, i) => reviewFor[[0, 1, 3, 2][i % 4] % plan.groups.length].push(w));
+
+    let done = 0;
+    const tick = () => stage(`第 ${nights.count + 1} 夜《${esc(outline.title || "")}》`, `已写好 ${done} / ${plan.groups.length} 段，每段写完会再精修一遍…`);
+    tick();
+    const parts = await Promise.all(plan.groups.map(async (g, i) => {
+      const art = await writeChecked(nightPartPrompt(outline.parts[i], i, outline, g, reviewFor[i], opts), g, reviewFor[i],
+        { ...opts, genre: PART_ROLES[i].mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" });
+      done++; tick();
+      return art;
+    }));
+
+    // Join the parts into one article; every section keeps its own paragraphs and translation.
+    const art = {
+      title: outline.title || `Night ${nights.count + 1}`,
+      night: nights.count + 1,
+      sections: parts.map((p, i) => ({ name: PART_ROLES[i].name, from: 0, to: 0, len: p.paragraphs.length })),
+      paragraphs: [], translation: [], glossary: [], phrases: [], quiz: [], refined: parts.every((p) => p.refined),
+    };
+    parts.forEach((p, i) => {
+      art.sections[i].from = art.paragraphs.length;
+      art.paragraphs.push(...p.paragraphs);
+      art.translation.push(...p.paragraphs.map((_, j) => p.translation[j] || ""));
+      art.sections[i].to = art.paragraphs.length;
+      art.glossary.push(...p.glossary);
+      art.phrases.push(...(p.phrases || []));
+      // Keep every review-word question (they drive the review schedule) and two word questions
+      // per part, so the night ends with about 8 word questions plus 5 reading questions.
+      const rvIdx = new Set(reviewFor[i].map((w) => reviewQuestionFor(p, w.word) - 1).filter((x) => x >= 0));
+      let kept = 0;
+      p.quiz.forEach((q, qi) => { if (rvIdx.has(qi) || (!rvIdx.has(qi) && kept++ < 2)) art.quiz.push(q); });
+    });
+    stage(`第 ${nights.count + 1} 夜《${esc(art.title)}》`, "四段都写好了，正在出阅读理解题…");
+    art.reading = await readingQuiz(art).catch(() => []);
+
+    const allWords = plan.groups.flat();
+    const allReview = reviewFor.flat();
+    const counts = markCounts(art);
+    const reviewed = allReview.filter((w) => counts.get(w.word.toLowerCase()));
+    markShown(reviewed);
+    if (plan.reviewNight) markShown(allWords.filter((w) => counts.get(w.word.toLowerCase())));
+    else markWritten(allWords);
+    nights.count += 1;
+    if (!nights.frame) nights.frame = outline.frame || "";
+    nights.tales.push({ night: nights.count, title: art.title, summary: outline.summary || "" });
+    nights.tales = nights.tales.slice(-30);
+    nights.hook = outline.hook || "";
+    saveNights();
+
+    const entry = { id: `${batchId}-0`, batchId, index: 0, created: new Date().toISOString(), words: allWords, review: reviewed,
+      reviewOnly: !!plan.reviewNight, opts: { ...opts, genreLabel: `一千零一夜，第 ${art.night} 夜` }, article: art, quizState: {}, readingState: {}, night: art.night };
+    history.unshift(entry);
+    history = history.slice(0, 200);
+    save(LS_HIST, history);
+    batch = [entry.id];
+    job.done = 1;
+    renderHistory();
+    show(entry.id);
+  } catch (e) {
+    renderError(e, "今晚的故事没写成：");
+  } finally {
+    job.running = false;
+    $("go").disabled = false;
+    renderTabs();
+  }
+}
+
+// Shared by short articles and night parts: draft, then up to two audit-driven edits.
+async function writeChecked(prompt, words, review, opts) {
+  let art = parseArticle(await callModel(prompt));
+  for (let round = 0; round < 2; round++) {
+    if (round > 0 && auditArticle(art, words, opts, review).ok) break;
+    try {
+      const rev = parseArticle(await callModel(buildRevisePrompt(art, words, opts, review)));
+      if (usedCount(rev, words) >= usedCount(art, words)) { rev.refined = true; art = rev; }
+    } catch (e) {
+      if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
+      break;
+    }
+  }
+  return syncPhrases(art);
+}
+
+function parseAiJson(text) {
+  const t = String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  try { return JSON.parse(t.slice(a, b + 1)); } catch { return null; }
+}
+
+// Reading-comprehension questions on the whole night, in the style of 考研英语阅读:
+// main idea, detail, inference, attitude, and meaning of a word in context.
+async function readingQuiz(art) {
+  const plain = art.paragraphs.map((p) => p.replace(/\{\{([^{}|]+)\|[^{}]+\}\}/g, "$1").replace(/\[\[|\]\]/g, "")).join("\n\n");
+  const raw = await callModel(`Write 5 reading-comprehension questions on the text below, in the style of 考研英语阅读理解 (Part A). One each: main idea / title; a specific detail; an inference (what can be inferred); the author's or a character's attitude; the meaning of a word or phrase in context. Each has 4 options (A-D) in English; distractors must be plausible and tempting (partly true, too absolute, or true but not stated), with exactly one defensible answer. Put the questions in the order of the text. Explain the answer in Chinese, pointing to the sentence that proves it.
+Reply with JSON only: {"questions": [{"type": "主旨|细节|推断|态度|词义", "question": "...", "options": ["...","...","...","..."], "answer": 0, "explain": "中文解析"}]}
+
+Text:
+${plain}`);
+  const obj = parseAiJson(raw);
+  return (obj?.questions || []).filter((q) => Array.isArray(q.options) && q.options.length === 4).slice(0, 5);
+}
+
+// Today's words for the night: newest first, up to NIGHT_WORDS, split into the four parts.
+function planNight(words) {
+  const { pick, rest } = pickToday(words, NIGHT_WORDS);
+  const due = dueWords(pick).slice(0, NIGHT_REVIEW);
+  // Parts: up to four, about ten words each; fewer words means fewer (not thinner) parts.
+  const split = (list) => {
+    const n = Math.min(NIGHT_PARTS, Math.max(1, Math.ceil(list.length / 10)));
+    return chunk(list, Math.ceil(list.length / n));
+  };
+  if (!pick.length) {
+    // Nothing new: a review night built from up to 24 due words, which count as reviewed.
+    const dueOnly = dueWords([]).slice(0, 24).map((b) => ({ word: b.word, meaning: b.meaning }));
+    return { pick: dueOnly, rest, due: [], groups: dueOnly.length ? split(dueOnly) : [], reviewNight: true };
+  }
+  return { pick, rest, due, groups: split(pick) };
 }
 
 // Generates several articles with up to 3 requests in flight. Each article appears as soon as it
@@ -1158,20 +1904,29 @@ async function runBatch(tasks, opts, batchId) {
         const review = t.review || [];
         let art = parseArticle(await callModel(buildPrompt(t.words, opts, review)));
         if (opts.refine) {
-          // Keep the revision only if it parses and doesn't lose target words; otherwise keep the draft.
-          try {
-            const rev = parseArticle(await callModel(buildRevisePrompt(art, t.words, opts, review)));
-            if (usedCount(rev, t.words) >= usedCount(art, t.words)) { rev.refined = true; art = rev; }
-          } catch (e) {
-            if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
+          // Up to two editing rounds. Round 1 is the full edit with the audit's problem list;
+          // round 2 runs only if the audit still fails. A revision is kept only if it parses and
+          // scores at least as well as what we have, so a bad edit can never make things worse.
+          for (let round = 0; round < 2; round++) {
+            if (round > 0 && auditArticle(art, t.words, opts, review).ok) break;
+            try {
+              const rev = parseArticle(await callModel(buildRevisePrompt(art, t.words, opts, review)));
+              if (usedCount(rev, t.words) >= usedCount(art, t.words)) { rev.refined = true; art = rev; }
+            } catch (e) {
+              if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
+              break;
+            }
           }
         }
+        syncPhrases(art);
         // Only review words that actually made it into the text count as reviewed.
         const counts = markCounts(art);
         const reviewed = review.filter((w) => counts.get(w.word.toLowerCase()));
-        markReviewed(reviewed);
+        markShown(reviewed);
+        if (t.reviewOnly) markShown(t.words.filter((w) => counts.get(w.word.toLowerCase())));
+        else markWritten(t.words);
         const entry = { id: `${batchId}-${t.index}`, batchId, index: t.index, created: new Date().toISOString(),
-          words: t.words, review: reviewed, opts, article: art, quizState: {} };
+          words: t.words, review: reviewed, reviewOnly: !!t.reviewOnly, opts, article: art, quizState: {} };
         history.unshift(entry);
         history = history.slice(0, 200);
         save(LS_HIST, history);
@@ -1260,14 +2015,36 @@ function renderArticle(e) {
   const reviewSet = new Set((e.review || []).map((w) => w.word.toLowerCase()));
   const repeated = e.words.filter((w) => (counts.get(w.word.toLowerCase()) || 0) >= 2).length;
 
-  const paras = a.paragraphs.map((p, i) =>
-    `<p class="en">${renderMarked(p, reviewSet)}</p>${a.translation[i] ? `<p class="zh">${esc(a.translation[i])}</p>` : ""}`).join("");
+  // Night installments carry section boundaries; a small divider marks where each part starts.
+  const sectionAt = new Map((a.sections || []).map((s, i) => [s.from, { ...s, i }]));
+  const paras = a.paragraphs.map((p, i) => {
+    const s = sectionAt.get(i);
+    const head = s && s.i > 0 ? `<div class="part-break" aria-hidden="true">${s.i === 2 ? "◆" : "·  ·  ·"}</div>` : "";
+    return `${head}<p class="en">${renderMarked(p, reviewSet)}</p>${a.translation[i] ? `<p class="zh">${esc(a.translation[i])}</p>` : ""}`;
+  }).join("");
+
+  // Reading comprehension (考研-style): main idea, detail, inference, attitude, word in context.
+  const rs = e.readingState || {};
+  const reading = (a.reading || []).map((q, qi) => {
+    const picked = rs[qi], done = picked != null;
+    const opts = q.options.map((o, oi) => {
+      const cls = done && oi === +q.answer ? "right" : done && oi === picked ? "bad" : "";
+      return `<button data-r="${qi}" data-o="${oi}" class="${cls}" ${done ? "disabled" : ""}><b>${"ABCD"[oi]}.</b> ${esc(o)}</button>`;
+    }).join("");
+    return `<div class="q q-read"><p class="stem">${qi + 1}. <span class="rd-tag">${esc(q.type || "阅读")}</span>${esc(q.question)}</p><div class="opts opts-col">${opts}</div>
+      ${done && q.explain ? `<div class="exp">${esc(q.explain)}</div>` : ""}</div>`;
+  }).join("");
+  const rAnswered = Object.keys(rs).length, rRight = (a.reading || []).filter((q, i) => rs[i] === +q.answer).length;
+  const rScore = a.reading?.length && rAnswered === a.reading.length ? `<p class="score">阅读理解答对 ${rRight} / ${a.reading.length}</p>` : "";
 
   const gloss = a.glossary.map((g) => `
     <span class="hw">${esc(g.word)}</span><span class="pos">${esc(g.pos)}</span><span>${esc(g.meaning)}</span>
     ${g.note ? `<span class="note">${esc(g.note)}</span>` : ""}`).join("");
 
   const qs = e.quizState || {};
+  // Which quiz question tests which review word (0-based question index -> word).
+  const reviewOf = new Map();
+  for (const w of e.review || []) { const i = reviewQuestionFor(a, w.word); if (i) reviewOf.set(i - 1, w.word); }
   const quiz = a.quiz.map((q, qi) => {
     const picked = qs[qi];
     const done = picked != null;
@@ -1277,8 +2054,10 @@ function renderArticle(e) {
       else if (done && oi === picked) cls = "bad";
       return `<button data-q="${qi}" data-o="${oi}" class="${cls}" ${done ? "disabled" : ""}>${esc(o)}</button>`;
     }).join("");
-    return `<div class="q"><p class="stem">${qi + 1}. ${esc(q.question)}</p><div class="opts">${opts}</div>
-      ${done && q.explain ? `<div class="exp">${esc(q.explain)}</div>` : ""}</div>`;
+    const rv = reviewOf.get(qi);
+    const note = done && rv ? `<div class="exp rv-note">${picked === +q.answer ? "答对了。" : "答错了。"}${esc(scheduleNote(rv))}</div>` : "";
+    return `<div class="q${rv ? " q-rv" : ""}"><p class="stem">${qi + 1}. ${rv ? `<span class="rv-tag">复习</span>` : ""}${esc(q.question)}</p><div class="opts">${opts}</div>
+      ${done && q.explain ? `<div class="exp">${esc(q.explain)}</div>` : ""}${note}</div>`;
   }).join("");
   const answered = Object.keys(qs).length;
   const right = a.quiz.filter((q, i) => qs[i] === +q.answer).length;
@@ -1310,14 +2089,15 @@ function renderArticle(e) {
     </div>
     <article>
       <h1>${esc(a.title)}</h1>
-      <p class="meta"><b>${esc(e.opts.levelLabel)}${esc(e.opts.genreLabel)}</b>，${e.words.length} 个新词${repeated ? `（${repeated} 个出现了两次以上）` : ""}${reviewSet.size ? `，${reviewSet.size} 个<span class="rv-key">复习词</span>` : ""}，${a.refined ? "已精修，" : ""}${fmtDate(e.created)}</p>
+      <p class="meta"><b>${esc(e.opts.levelLabel)}${e.night ? "，" : ""}${esc(e.opts.genreLabel)}</b>，${e.words.length} 个${e.reviewOnly ? "复习词" : "新词"}${repeated ? `（${repeated} 个出现了两次以上）` : ""}${reviewSet.size ? `，${reviewSet.size} 个<span class="rv-key">复习词</span>` : ""}，${a.refined ? "已精修，" : ""}${fmtDate(e.created)}</p>
       ${missing.length ? `<p class="missing">这篇没有用到：${missing.map(esc).join(", ")}</p>` : ""}
       ${paras}
     </article>
     ${a.glossary.length ? `<section class="block"><h2>本文单词</h2><div class="gloss">${gloss}</div></section>` : ""}
     ${(a.phrases || []).length ? `<section class="block"><h2>作文句式</h2><p class="phr-intro">文中带虚线的是考试作文里常用的表达，可以直接借用。</p><div class="phr">${a.phrases.map((p) => `
       <div><span class="pp">${esc(p.phrase)}</span><span class="pm">${esc(p.meaning)}</span>${p.tip ? `<span class="pt">${esc(p.tip)}</span>` : ""}</div>`).join("")}</div></section>` : ""}
-    ${a.quiz.length ? `<section class="block"><h2>小测验</h2>${quiz}${score}</section>` : ""}
+    ${(a.reading || []).length ? `<section class="block"><h2>阅读理解</h2><p class="phr-intro">按考研阅读的题型出：主旨、细节、推断、态度、词义。</p>${reading}${rScore}</section>` : ""}
+    ${a.quiz.length ? `<section class="block"><h2>${a.reading?.length ? "单词小测验" : "小测验"}</h2>${quiz}${score}</section>` : ""}
     ${pager}
   `;
 }
@@ -1326,7 +2106,7 @@ function renderLoading(n, words) {
   $("sheet").className = "sheet";
   $("sheet").innerHTML = `<div class="loading">${buddy(
     n > 1 ? `正在写 ${n} 篇短文，第一篇写好就会显示。` : `正在写短文，用到 ${words.map((w) => esc(w.word)).join(", ")}。`,
-    "每篇先写初稿再精修一遍，通常需要 40 到 80 秒。",
+    "每篇先写初稿再精修一遍，通常需要 40 到 80 秒。" + (job?.opts?.restCount ? `今天先写这些，剩下 ${job.opts.restCount} 个词之后几天优先安排。` : ""),
     { wave: "live" })}</div>`;
 }
 
@@ -1348,8 +2128,8 @@ function renderIntro() {
     ${(() => { const s = bankStats();
       return buddy(greeting(), s.due ? `有 ${s.due} 个旧词今天该复习了，会混进今天的文章里。` : s.total ? `已经一起读过 ${s.total} 个词了。` : "今天也一起读一篇吧。", { wave: "idle" }); })()}
     <button class="drop-zone" id="introPick">
-      <b>选择今天的 PDF</b>
-      <span>选好就自动开始写，也可以把 PDF 直接拖到这里</span>
+      <b>选择今天的单词文件</b>
+      <span>PDF、Word、Excel、TXT 或图片都可以，选好就自动开始写，也可以直接拖到这里</span>
     </button>
     ${hasKey ? "" : `<p class="small">第一次用要先填 API Key，只用填一次。<button class="link" id="openKey">现在去填</button></p>`}
     <p class="small"><button class="link" id="demo">先看一篇示例</button></p>
@@ -1361,7 +2141,7 @@ function renderHistory() {
   if (!history.length) { ul.innerHTML = `<li class="empty">生成的短文会保存在这里</li>`; return; }
   ul.innerHTML = history.slice(0, 60).map((h) => `
     <li><button class="open" data-id="${h.id}" aria-current="${h.id === currentId}">
-      <span class="d">${fmtDate(h.created)}，${h.words.length} 词</span>
+      <span class="d">${h.night ? `第 ${h.night} 夜，` : ""}${fmtDate(h.created)}，${h.words.length} 词</span>
       <span class="t">${esc(h.article.title)}</span></button>
       <button class="del" data-del="${h.id}" aria-label="删除这篇" title="删除">×</button></li>`).join("");
 }
@@ -1427,6 +2207,16 @@ $("sheet").addEventListener("click", (ev) => {
   if (t.closest("[data-retry]")) { retryFailed(); return; }
   if (t.id === "copyMd") { copyMarkdown(t); return; }
   if (t.id === "printIt") { window.print(); return; }
+  const ropt = t.closest("button[data-r]");
+  if (ropt) {
+    const e = history.find((h) => h.id === currentId);
+    e.readingState = e.readingState || {};
+    if (e.readingState[ropt.dataset.r] != null) return;
+    e.readingState[ropt.dataset.r] = +ropt.dataset.o;
+    save(LS_HIST, history);
+    const y = window.scrollY; renderArticle(e); window.scrollTo({ top: y });
+    return;
+  }
   const opt = t.closest("button[data-q]");
   if (opt) {
     const e = history.find((h) => h.id === currentId);
@@ -1434,8 +2224,17 @@ $("sheet").addEventListener("click", (ev) => {
     e.quizState[opt.dataset.q] = +opt.dataset.o;
     save(LS_HIST, history);
     // Wrong answer: the correct word goes back to "review tomorrow".
-    const q = e.article.quiz[+opt.dataset.q];
-    if (q && +opt.dataset.o !== +q.answer) markMissed(q.options[+q.answer]);
+    // Right answer on a review word's question: that word advances to its next interval.
+    const qi = +opt.dataset.q;
+    const q = e.article.quiz[qi];
+    if (q) {
+      const rv = (e.review || []).find((w) => reviewQuestionFor(e.article, w.word) === qi + 1);
+      // On a review-only article every word is a review word, so its own questions count too.
+      const tw = e.reviewOnly ? e.words.find((w) => reviewQuestionFor(e.article, w.word) === qi + 1) : null;
+      const word = rv || tw;
+      if (+opt.dataset.o !== +q.answer) markMissed(word ? word.word : q.options[+q.answer]);
+      else if (word) markRecalled(word.word);
+    }
     const y = window.scrollY;
     renderArticle(e);
     window.scrollTo({ top: y });
