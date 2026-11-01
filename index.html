@@ -206,6 +206,10 @@ mark.w {
 mark.w:hover, mark.w.on { background: linear-gradient(transparent 14%, var(--marker) 14%, var(--marker) 96%, transparent 96%); }
 :root[data-theme="dark"] mark.w { background: linear-gradient(transparent 82%, var(--marker) 82%, var(--marker) 94%, transparent 94%); }
 :root[data-theme="dark"] mark.w:hover, :root[data-theme="dark"] mark.w.on { background: var(--marker-soft); box-shadow: inset 0 -2px 0 var(--marker); }
+/* Review words: the page's teal accent instead of yellow, so old and new words read differently. */
+mark.w.rv, :root[data-theme="dark"] mark.w.rv { background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 0 -2px 0 var(--accent); }
+mark.w.rv:hover, mark.w.rv.on { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.rv-key { padding: 0 3px; margin: 0 1px; background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 0 -2px 0 var(--accent); }
 .plain mark.w { background: none !important; box-shadow: none !important; }
 .plain mark.w:hover, .plain mark.w.on { background: var(--marker-soft) !important; }
 .ph { text-decoration: underline dashed var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
@@ -801,7 +805,9 @@ function updateCount() {
   const per = +$("per").value;
   if (!list.length) { $("count").textContent = "还没有单词"; return; }
   const n = Math.ceil(list.length / per);
-  $("count").innerHTML = `识别到 <b>${list.length}</b> 个单词，将生成 <b>${n}</b> 篇短文`;
+  let due = 0;
+  try { due = Math.min(dueWords(list).length, n * REVIEW_PER_ARTICLE); } catch {}   // bank not loaded yet
+  $("count").innerHTML = `识别到 <b>${list.length}</b> 个单词，将生成 <b>${n}</b> 篇短文${due ? `，另外混入 <b>${due}</b> 个复习词` : ""}`;
 }
 $("words").addEventListener("input", updateCount);
 $("per").addEventListener("change", updateCount);
@@ -843,19 +849,29 @@ function phraseRule(opts) {
   return `6. Work in ${n} set phrases or sentence patterns that score well in Chinese exam essays (四六级/考研作文), such as "play a crucial role in", "It is widely acknowledged that", "not only ... but also", "There is no denying that", "be closely related to", "In conclusion". Use them where they fit naturally, never stacked together. Mark each one as [[phrase as written]]. List them in "phrases" with the base form, a Chinese meaning, and one short Chinese tip on how to use it in an essay.`;
 }
 
-function buildPrompt(words, opts) {
+function reviewBlock(review) {
+  if (!review || !review.length) return "";
+  const list = review.map((w) => `- ${w.word}${w.meaning ? `  (${w.meaning})` : ""}`).join("\n");
+  return `
+Review words (learned on earlier days, due for spaced review):
+${list}
+Use each review word ONCE, naturally. Mark them the same way: {{surface form|review word}}. Do not add them to "glossary" or the quiz.
+`;
+}
+
+function buildPrompt(words, opts, review = []) {
   const list = words.map((w) => `- ${w.word}${w.meaning ? `  (${w.meaning})` : ""}`).join("\n");
   const craft = GENRE_CRAFT[opts.genre] || "";
   return `You are an experienced writer of graded readers for Chinese learners of English. Today the learner memorized these words:
 
 ${list}
-
+${reviewBlock(review)}
 Write ${opts.genre}, about ${opts.length} English words long, at the level of ${opts.level}.${opts.topic ? ` Topic: ${opts.topic}.` : ""}
 ${craft ? `\nWhat good writing in this form looks like: ${craft}\n` : ""}
 Before writing, silently decide on one situation in which all of these words could plausibly come up, and build the text around it.
 
 Rules:
-1. Use EVERY target word at least once, in a context that makes its meaning guessable. Inflected forms are fine (abandon -> abandoned). If meanings are given in brackets, use the word in one of those senses (senses are separated by "|"; prefer the most common one).
+1. Use EVERY target word at least TWICE (three times for the harder ones), in different sentences and ideally different paragraphs, so the learner meets it again after a gap. Vary the form or the role where natural (decay as a verb, later as a noun; erode, later eroded / erosion). Each use must make sense on its own; never repeat a word just by restating the same sentence. If meanings are given in brackets, use the word in one of those senses (senses are separated by "|"; prefer the most common one).
 2. Mark every occurrence of a target word as {{surface form|target word}}, where "target word" is copied exactly from the list. Example: She {{abandoned|abandon}} the plan.
 3. Apart from the target words, keep the vocabulary at or below the stated level.
 4. Give a natural Chinese translation for each paragraph (意译，不要逐词硬译).
@@ -877,12 +893,13 @@ Reply with JSON only, no markdown fences, in exactly this shape:
 
 // Second pass: the model edits its own draft against a checklist. Most of the quality gap between
 // cheap and expensive models is first-draft polish, which a focused revision pass recovers.
-function buildRevisePrompt(draft, words, opts) {
+function buildRevisePrompt(draft, words, opts, review = []) {
   const list = words.map((w) => w.word).join(", ");
-  return `You are a demanding editor of graded readers for Chinese learners of English (level: ${opts.level}). Below is a draft JSON produced by a writer. Target words: ${list}.
+  const rlist = review.map((w) => w.word).join(", ");
+  return `You are a demanding editor of graded readers for Chinese learners of English (level: ${opts.level}). Below is a draft JSON produced by a writer. Target words: ${list}.${rlist ? ` Review words (use once each, not in glossary or quiz): ${rlist}.` : ""}
 
 Revise it. Check and fix, in this order:
-1. Any target word that is missing or not marked as {{surface|target}}: add it naturally.
+1. Every target word must appear at least twice, in different sentences, all marked as {{surface|target}}. Add a natural second use where one is missing. Every review word must appear once, marked the same way. Do not remove any marked occurrence.
 2. Any target word used in an unnatural collocation or a sentence that exists only to contain it: rewrite that sentence so the word does real work.
 3. Flat or generic writing: replace vague phrases with concrete detail; vary sentence length; cut any moral spelled out at the end. Remove empty filler ("delve", "tapestry", "a testament to", "embark on a journey"). KEEP the exam set phrases marked [[...]] (they are there on purpose for exam practice); only fix them if they are used incorrectly or several are stacked in one sentence. Keep "phrases" consistent with the [[...]] marks.
 4. Vocabulary above the level (other than target words): replace with simpler words.
@@ -964,10 +981,21 @@ class UserError extends Error {
   constructor(msg, detail) { super(msg); this.detail = detail; }
 }
 
+// How many times each lemma is marked in the article.
+function markCounts(art) {
+  const c = new Map();
+  art.paragraphs.join(" ").replace(/\{\{[^{}|]+\|([^{}]+)\}\}/g, (_, l) => {
+    const k = l.trim().toLowerCase(); c.set(k, (c.get(k) || 0) + 1);
+  });
+  return c;
+}
+// Score used to decide whether the revision is better than the draft: words covered first,
+// then words that reached two uses.
 function usedCount(art, words) {
-  const used = new Set();
-  art.paragraphs.join(" ").replace(/\{\{[^{}|]+\|([^{}]+)\}\}/g, (_, l) => used.add(l.trim().toLowerCase()));
-  return words.filter((w) => used.has(w.word.toLowerCase())).length;
+  const c = markCounts(art);
+  const covered = words.filter((w) => c.get(w.word.toLowerCase())).length;
+  const twice = words.filter((w) => (c.get(w.word.toLowerCase()) || 0) >= 2).length;
+  return covered * 1000 + twice;
 }
 
 function parseArticle(text) {
@@ -991,6 +1019,79 @@ let batch = [];        // ids of entries shown as tabs
 let currentId = null;
 let showZh = false;
 let plain = false;
+
+/* ---------------- word bank: spaced review ----------------
+   Each word ever imported is stored with the day it was learned and a review stage.
+   A word is due when today >= due. Seeing it in an article moves it to the next interval;
+   getting it wrong in a quiz sends it back to "tomorrow". */
+const LS_BANK = "wordreader.bank.v1";
+const INTERVALS = [1, 2, 4, 7, 15, 30];       // days after each successful review
+const REVIEW_PER_ARTICLE = 3;
+let bank = load(LS_BANK, {});
+const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function addDays(key, n) { const [y, m, d] = key.split("-").map(Number); return dayKey(new Date(y, m - 1, d + n)); }
+const saveBank = () => save(LS_BANK, bank);
+
+// Register today's words. Re-importing a word that is already in the bank leaves its schedule alone.
+function learnWords(words) {
+  const today = dayKey();
+  for (const w of words) {
+    const k = w.word.toLowerCase();
+    if (!bank[k]) bank[k] = { word: w.word, meaning: w.meaning || "", learned: today, stage: 0, due: addDays(today, INTERVALS[0]), seen: 0 };
+    else if (w.meaning && !bank[k].meaning) bank[k].meaning = w.meaning;
+  }
+  saveBank();
+}
+// Words due today that are not in today's list. Words missed in a quiz (lapse) and the most
+// overdue come first.
+function dueWords(exclude) {
+  const today = dayKey();
+  const skip = new Set(exclude.map((w) => w.word.toLowerCase()));
+  return Object.values(bank)
+    .filter((b) => b.due <= today && !skip.has(b.word.toLowerCase()))
+    .sort((a, b) => (b.lapse ? 1 : 0) - (a.lapse ? 1 : 0) || a.due.localeCompare(b.due));
+}
+// A review word showed up in an article: advance its interval.
+function markReviewed(words) {
+  const today = dayKey();
+  for (const w of words) {
+    const b = bank[w.word.toLowerCase()];
+    if (!b || b.due > today) continue;
+    b.stage = Math.min(b.stage + 1, INTERVALS.length - 1);
+    b.due = addDays(today, INTERVALS[b.stage]);
+    b.seen = (b.seen || 0) + 1;
+    b.lapse = false;
+  }
+  saveBank();
+}
+// Quiz answered wrong: bring the word back tomorrow and restart its intervals.
+function markMissed(word) {
+  const b = bank[String(word || "").toLowerCase()];
+  if (!b) return;
+  b.stage = 0; b.due = addDays(dayKey(), 1); b.lapse = true;
+  saveBank();
+}
+// Articles generated before the word bank existed: put their words in, scheduled from the day
+// they were learned, so they aren't lost.
+function backfillBank() {
+  let changed = false;
+  for (const h of history) {
+    if (String(h.id).startsWith("demo-")) continue;
+    const day = dayKey(new Date(h.created));
+    for (const w of h.words || []) {
+      const k = w.word.toLowerCase();
+      if (bank[k]) continue;
+      bank[k] = { word: w.word, meaning: w.meaning || "", learned: day, stage: 0, due: addDays(day, INTERVALS[0]), seen: 0 };
+      changed = true;
+    }
+  }
+  if (changed) saveBank();
+}
+function bankStats() {
+  const today = dayKey();
+  const all = Object.values(bank);
+  return { total: all.length, due: all.filter((b) => b.due <= today).length };
+}
 
 function chunk(arr, n) {
   const out = [];
@@ -1029,7 +1130,12 @@ async function generate() {
     refine: true,
   };
   const groups = chunk(words, +$("per").value);
-  await runBatch(groups.map((g, i) => ({ index: i, words: g })), opts, Date.now().toString(36));
+  // Hand out due review words across the articles, a few per article.
+  const due = dueWords(words).slice(0, groups.length * REVIEW_PER_ARTICLE);
+  learnWords(words);
+  await runBatch(groups.map((g, i) => ({ index: i, words: g,
+    review: due.slice(i * REVIEW_PER_ARTICLE, (i + 1) * REVIEW_PER_ARTICLE).map((b) => ({ word: b.word, meaning: b.meaning })) })),
+    opts, Date.now().toString(36));
 }
 
 // Generates several articles with up to 3 requests in flight. Each article appears as soon as it
@@ -1049,18 +1155,23 @@ async function runBatch(tasks, opts, batchId) {
     while (queue.length) {
       const t = queue.shift();
       try {
-        let art = parseArticle(await callModel(buildPrompt(t.words, opts)));
+        const review = t.review || [];
+        let art = parseArticle(await callModel(buildPrompt(t.words, opts, review)));
         if (opts.refine) {
           // Keep the revision only if it parses and doesn't lose target words; otherwise keep the draft.
           try {
-            const rev = parseArticle(await callModel(buildRevisePrompt(art, t.words, opts)));
+            const rev = parseArticle(await callModel(buildRevisePrompt(art, t.words, opts, review)));
             if (usedCount(rev, t.words) >= usedCount(art, t.words)) { rev.refined = true; art = rev; }
           } catch (e) {
             if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
           }
         }
+        // Only review words that actually made it into the text count as reviewed.
+        const counts = markCounts(art);
+        const reviewed = review.filter((w) => counts.get(w.word.toLowerCase()));
+        markReviewed(reviewed);
         const entry = { id: `${batchId}-${t.index}`, batchId, index: t.index, created: new Date().toISOString(),
-          words: t.words, opts, article: art, quizState: {} };
+          words: t.words, review: reviewed, opts, article: art, quizState: {} };
         history.unshift(entry);
         history = history.slice(0, 200);
         save(LS_HIST, history);
@@ -1097,10 +1208,12 @@ $("go").addEventListener("click", generate);
 /* ---------------- rendering ---------------- */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-function renderMarked(text) {
+function renderMarked(text, reviewSet = new Set()) {
   return esc(text)
-    .replace(/\{\{([^{}|]+)\|([^{}]+)\}\}/g, (_, surface, lemma) =>
-      `<mark class="w" tabindex="0" data-w="${lemma.trim().toLowerCase()}">${surface}</mark>`)
+    .replace(/\{\{([^{}|]+)\|([^{}]+)\}\}/g, (_, surface, lemma) => {
+      const k = lemma.trim().toLowerCase();
+      return `<mark class="w${reviewSet.has(k) ? " rv" : ""}" tabindex="0" data-w="${k}"${reviewSet.has(k) ? ' title="复习词"' : ""}>${surface}</mark>`;
+    })
     .replace(/\[\[([^\[\]]+)\]\]/g, (_, p) => `<span class="ph" title="作文句式">${p}</span>`);
 }
 
@@ -1142,12 +1255,13 @@ $("tabs").addEventListener("click", (ev) => {
 
 function renderArticle(e) {
   const a = e.article;
-  const used = new Set();
-  a.paragraphs.join(" ").replace(/\{\{[^{}|]+\|([^{}]+)\}\}/g, (_, l) => used.add(l.trim().toLowerCase()));
-  const missing = e.words.filter((w) => !used.has(w.word.toLowerCase())).map((w) => w.word);
+  const counts = markCounts(a);
+  const missing = e.words.filter((w) => !counts.get(w.word.toLowerCase())).map((w) => w.word);
+  const reviewSet = new Set((e.review || []).map((w) => w.word.toLowerCase()));
+  const repeated = e.words.filter((w) => (counts.get(w.word.toLowerCase()) || 0) >= 2).length;
 
   const paras = a.paragraphs.map((p, i) =>
-    `<p class="en">${renderMarked(p)}</p>${a.translation[i] ? `<p class="zh">${esc(a.translation[i])}</p>` : ""}`).join("");
+    `<p class="en">${renderMarked(p, reviewSet)}</p>${a.translation[i] ? `<p class="zh">${esc(a.translation[i])}</p>` : ""}`).join("");
 
   const gloss = a.glossary.map((g) => `
     <span class="hw">${esc(g.word)}</span><span class="pos">${esc(g.pos)}</span><span>${esc(g.meaning)}</span>
@@ -1196,7 +1310,7 @@ function renderArticle(e) {
     </div>
     <article>
       <h1>${esc(a.title)}</h1>
-      <p class="meta"><b>${esc(e.opts.levelLabel)}${esc(e.opts.genreLabel)}</b>，用到 ${e.words.length} 个单词，${a.refined ? "已精修，" : ""}${fmtDate(e.created)}</p>
+      <p class="meta"><b>${esc(e.opts.levelLabel)}${esc(e.opts.genreLabel)}</b>，${e.words.length} 个新词${repeated ? `（${repeated} 个出现了两次以上）` : ""}${reviewSet.size ? `，${reviewSet.size} 个<span class="rv-key">复习词</span>` : ""}，${a.refined ? "已精修，" : ""}${fmtDate(e.created)}</p>
       ${missing.length ? `<p class="missing">这篇没有用到：${missing.map(esc).join(", ")}</p>` : ""}
       ${paras}
     </article>
@@ -1231,7 +1345,8 @@ function renderIntro() {
   $("sheet").className = "sheet";
   const hasKey = !!$("apiKey").value.trim();
   $("sheet").innerHTML = `<div class="intro">
-    ${buddy(greeting(), "今天也一起读一篇吧。", { wave: "idle" })}
+    ${(() => { const s = bankStats();
+      return buddy(greeting(), s.due ? `有 ${s.due} 个旧词今天该复习了，会混进今天的文章里。` : s.total ? `已经一起读过 ${s.total} 个词了。` : "今天也一起读一篇吧。", { wave: "idle" }); })()}
     <button class="drop-zone" id="introPick">
       <b>选择今天的 PDF</b>
       <span>选好就自动开始写，也可以把 PDF 直接拖到这里</span>
@@ -1279,14 +1394,17 @@ function openPop(mark) {
   if (!e) return;
   const key = mark.dataset.w;
   const g = e.article.glossary.find((x) => String(x.word).toLowerCase() === key) || {};
-  const given = e.words.find((w) => w.word.toLowerCase() === key);
+  const given = e.words.find((w) => w.word.toLowerCase() === key) || (e.review || []).find((w) => w.word.toLowerCase() === key);
+  const b = bank[key];
+  const learnedNote = b && (e.review || []).some((w) => w.word.toLowerCase() === key)
+    ? `<div class="given">复习词，${b.learned.slice(5).replace("-", "月")}日学的</div>` : "";
   pop = document.createElement("div");
   pop.className = "pop";
   pop.setAttribute("role", "dialog");
   pop.innerHTML = `<div><span class="hw">${esc(g.word || given?.word || key)}</span><span class="pos">${esc(g.pos || "")}</span></div>
     <div class="mean">${esc(g.meaning || given?.meaning || "（没有释义）")}</div>
     ${g.note ? `<div class="note">${esc(g.note)}</div>` : ""}
-    ${given?.meaning && given.meaning !== g.meaning ? `<div class="given">你的词书：${esc(given.meaning)}</div>` : ""}`;
+    ${given?.meaning && given.meaning !== g.meaning ? `<div class="given">你的词书：${esc(given.meaning)}</div>` : ""}${learnedNote}`;
   document.body.append(pop);
   mark.classList.add("on");
   const r = mark.getBoundingClientRect();
@@ -1315,6 +1433,9 @@ $("sheet").addEventListener("click", (ev) => {
     e.quizState = e.quizState || {};
     e.quizState[opt.dataset.q] = +opt.dataset.o;
     save(LS_HIST, history);
+    // Wrong answer: the correct word goes back to "review tomorrow".
+    const q = e.article.quiz[+opt.dataset.q];
+    if (q && +opt.dataset.o !== +q.answer) markMissed(q.options[+q.answer]);
     const y = window.scrollY;
     renderArticle(e);
     window.scrollTo({ top: y });
@@ -1412,6 +1533,7 @@ function loadDemo() {
 
 /* ---------------- init ---------------- */
 restoreSettings();
+backfillBank();
 updateKeyState();
 $("words").value = load(LS_WORDS, "");
 updateCount();
