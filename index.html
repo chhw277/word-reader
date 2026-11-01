@@ -1190,7 +1190,9 @@ const STYLE_RULES = `Style rules (these matter as much as using the words):
 - Prefer concrete nouns and strong verbs. Vary sentence length; mix short sentences with longer ones.
 - Never use empty filler that has no exam value: "delve", "tapestry", "a testament to", "embark on a journey", "navigate the complexities", "Little did she know".
 - No moral or lesson spelled out at the end.
-- Do not cram several target words into one sentence; spread them across the text.`;
+- Do not cram several target words into one sentence; spread them across the text.
+- Keep one tense for the narration (past tense for stories) and keep it consistent.
+- Every sentence must be literally sensible. No mixed metaphors or impossible actions (bad: "thunder loomed overhead", "plug the sea").`;
 
 // The learner also wants exam-writing value (四六级/考研作文), so useful set phrases are allowed
 // in moderation and taught explicitly. How many depends on the genre.
@@ -1202,10 +1204,12 @@ const PHRASE_COUNT = {
   "a popular-science article": "1 to 2",
 };
 function phraseRule(opts) {
+  if (opts.assignPhrase) return assignedPhraseRule(opts.assignPhrase);
   const n = PHRASE_COUNT[opts.genre] || "1";
   return `6. Work in ${n} set phrases or sentence patterns that score well in Chinese exam essays (四六级/考研作文), such as "play a crucial role in", "It is widely acknowledged that", "not only ... but also", "There is no denying that", "be closely related to", "In conclusion". Use them where they fit naturally, never stacked together. In the TEXT, wrap each one exactly as written in double square brackets, e.g. "Tom [[not only]] cleared the path [[but also]] fixed the gate." List in "phrases" ONLY phrases that you actually wrapped in the text, with the base form, a Chinese meaning, and one short Chinese tip on how to use it in an essay.
 
-Before replying, check your own text: count the {{...}} marks for each target word (every one must be 2 or more) and the [[...]] marks (must be ${n}). Fix it if not.`;
+Never paste a phrase template such as "not only ... but also" into the text; write the full sentence. Do not use markdown (_..._ or **...**).
+Before replying, check your own text: every {{...}} mark has both halves ({{surface|target}}); each target word is marked 2 times (3 at most); the [[...]] marks match ${n}. Fix it if not.`;
 }
 
 // Room for every required use. About one required word per 18 running words (two or three
@@ -1243,7 +1247,7 @@ ${craft ? `\nWhat good writing in this form looks like: ${craft}\n` : ""}
 Before writing, silently decide on one situation in which all of these words could plausibly come up, and build the text around it.
 
 Rules:
-1. Use EVERY target word at least TWICE (three times for the harder ones), in different sentences and ideally different paragraphs, so the learner meets it again after a gap. Vary the form or the role where natural (decay as a verb, later as a noun; erode, later eroded / erosion). Each use must make sense on its own; never repeat a word just by restating the same sentence. If meanings are given in brackets, use the word in one of those senses (senses are separated by "|"; prefer the most common one).
+1. Use EVERY target word exactly TWICE (never more than three times), in different paragraphs, so the learner meets it again after a gap. The second use must come from a NEW event or idea, not a restatement of the first (bad: "watched the lamp radiate its light" then "the beam would radiate across the waves"; good: the lamp radiates light, later a character's calm radiates through the room). Vary the form where natural (erode, later erosion). Use each word in its most common exam sense, the one a 考研 reading passage would use (if meanings are given in brackets, separated by "|", prefer the first common one); do not force a rare sense (bad: "the anger of an infant" to reuse infant, "the legislative rules of the school").
 2. Mark every occurrence of a target word as {{surface form|target word}}, where "target word" is copied exactly from the list. Example: She {{abandoned|abandon}} the plan.
 3. Apart from the target words, keep the vocabulary at or below the stated level.
 4. Give a natural Chinese translation for each paragraph (意译，不要逐词硬译).
@@ -1270,7 +1274,35 @@ Reply with JSON only, no markdown fences, in exactly this shape:
 const PHRASE_MIN = {
   "an argumentative essay like an exam reading passage": 2,
 };
-function auditArticle(art, words, opts, review = []) {
+// Sentences that say nearly the same thing twice ("The beam would radiate across the waves"
+// right after "watched the lamp radiate its light"). Compared on content words, ignoring the
+// marked target word itself, so two different uses of the same word are fine.
+const STOP = new Set("the a an and or but of to in on at by for with from as is are was were be been his her their its he she they it that this then there into over not no".split(" "));
+function contentSet(s) {
+  return new Set(s.toLowerCase().replace(/\{\{[^{}]*\}\}/g, " ").replace(/\[\[|\]\]/g, "")
+    .match(/[a-z']{3,}/g)?.filter((w) => !STOP.has(w)) || []);
+}
+// Two kinds of echo count as a restatement:
+//  1. heavy overlap of content words (a near copy of the sentence);
+//  2. the same target word used again in the same little scene, i.e. sharing at least two other
+//     content words (lamp/light radiate, then beam/light radiate; storm/walls erode, then storm/originals erode).
+function nearDuplicates(sentences) {
+  const sets = sentences.map(contentSet);
+  const marks = sentences.map((s) => new Set((s.match(/\{\{[^{}|]+\|([^{}]+)\}\}/g) || []).map((m) => m.replace(/^.*\|/, "").replace(/\}\}$/, "").toLowerCase())));
+  const roots = sets.map((s) => new Set([...s].map(stemOf)));
+  const out = [];
+  for (let i = 0; i < sets.length; i++) for (let j = i + 1; j < sets.length; j++) {
+    const a = roots[i], b = roots[j];
+    let inter = 0; a.forEach((w) => b.has(w) && inter++);
+    const sharedMark = [...marks[i]].some((m) => marks[j].has(m));
+    if ((a.size >= 4 && b.size >= 4 && inter / Math.min(a.size, b.size) >= 0.6) || (sharedMark && inter >= 2)) out.push([sentences[i], sentences[j]]);
+  }
+  return out;
+}
+const plainText = (s) => String(s).replace(/\{\{([^{}|]+)(?:\|[^{}]*)?\}\}/g, "$1").replace(/\[\[|\]\]/g, "");
+const sentencesOf = (art) => art.paragraphs.join(" ").split(/(?<=[.!?]["'’”]?)\s+/).filter((s) => s.trim().length > 20);
+
+function auditArticle(art, words, opts, review = [], extra = []) {
   const counts = markCounts(art);
   const once = words.filter((w) => (counts.get(w.word.toLowerCase()) || 0) === 1).map((w) => w.word);
   const missing = words.filter((w) => !counts.get(w.word.toLowerCase())).map((w) => w.word);
@@ -1292,6 +1324,22 @@ function auditArticle(art, words, opts, review = []) {
   const crammed = art.paragraphs.join(" ").split(/(?<=[.!?])\s+/).filter((s) => (s.match(/\{\{/g) || []).length >= 3);
   if (crammed.length) problems.push(`${crammed.length} sentence(s) contain three or more marked words, e.g. "${crammed[0].replace(/\{\{([^{}|]+)\|[^{}]+\}\}/g, "$1").slice(0, 120)}". Split them so each sentence has at most two.`);
   if (inText < phraseMin) problems.push(`Only ${inText} exam set phrase(s) are marked [[...]] in the text; at least ${phraseMin} are required. Weave them into sentences that are already there. Every entry in "phrases" must appear in the text marked [[...]]; remove entries that don't.`);
+  // Overuse: more than three uses of a word reads like drilling (seen: fragment x5, conduct x4).
+  const over = words.filter((w) => (counts.get(w.word.toLowerCase()) || 0) > 3)
+    .map((w) => `${w.word} (${counts.get(w.word.toLowerCase())}x)`);
+  if (over.length) problems.push(`These words are used too many times: ${over.join(", ")}. Keep exactly 2 uses of each (3 at most) and rewrite the extra sentences without the word.`);
+  // Both uses of a word in the same paragraph: the learner meets it twice in one breath, and it
+  // usually means the second use restates the first (the lamp radiates light / the beam radiates).
+  const samePara = [...new Set(art.paragraphs.flatMap((p) => {
+    const c = new Map();
+    (p.match(/\{\{[^{}|]+\|([^{}]+)\}\}/g) || []).forEach((m) => { const k = m.replace(/^.*\|/, "").replace(/\}\}$/, "").toLowerCase(); c.set(k, (c.get(k) || 0) + 1); });
+    return [...c].filter(([k, n]) => n >= 2 && words.some((w) => w.word.toLowerCase() === k)).map(([k]) => k);
+  }))];
+  if (samePara.length) problems.push(`These words are used twice inside the same paragraph: ${samePara.join(", ")}. Keep one use there and move the other to a different paragraph, in a different situation.`);
+  // Near-duplicate sentences: the second use of a word must come from a new event, not a restatement.
+  const dups = nearDuplicates(sentencesOf(art));
+  if (dups.length) problems.push(`${dups.length} pair(s) of sentences say nearly the same thing, e.g. "${plainText(dups[0][0]).slice(0, 90)}" / "${plainText(dups[0][1]).slice(0, 90)}". Rewrite the later one so it describes something new (a different action, consequence or detail), keeping its marked word.`);
+  problems.push(...extra);
   return { problems, ok: !problems.length };
 }
 
@@ -1325,17 +1373,17 @@ function syncPhrases(art) {
   return art;
 }
 
-function buildRevisePrompt(draft, words, opts, review = []) {
+function buildRevisePrompt(draft, words, opts, review = [], extra = []) {
   const list = words.map((w) => w.word).join(", ");
   const rlist = review.map((w) => w.word).join(", ");
-  const { problems } = auditArticle(draft, words, opts, review);
+  const { problems } = auditArticle(draft, words, opts, review, extra);
   const must = problems.length
     ? `\nAn automatic check found these problems. Fix ALL of them; this is the most important part of the job:\n${problems.map((p, i) => `  ${String.fromCharCode(65 + i)}. ${p}`).join("\n")}\n`
     : "";
   return `You are a demanding editor of graded readers for Chinese learners of English (level: ${opts.level}). Below is a draft JSON produced by a writer. Target words: ${list}.${rlist ? ` Review words (use once each in the text, not in glossary; each needs its own quiz question with "review": true): ${rlist}.` : ""}
 ${must}
 Then revise it. Check and fix, in this order:
-1. Every target word must appear at least twice, in different sentences, all marked as {{surface|target}}. Every review word must appear once, marked the same way. Do not remove any marked occurrence. You may lengthen the text by up to 40% to make room.
+1. Every target word must appear exactly twice (three at most), in different paragraphs, every occurrence marked as {{surface|target}} with BOTH halves (never {{word}} alone). The two uses must describe different events. Every review word must appear once, marked the same way. Do not drop any target word. You may lengthen the text by up to 40% to make room.
 2. Any target word in an unnatural collocation or a sentence that exists only to contain it (e.g. "the legislative rules of the school"): rewrite so the word is used the way a native writer would, even if that means changing the situation in the sentence.
 2b. Factual errors (science, history, how things work): fix them. Example: water rises in plant stems by capillary action and transpiration, not gravity.
 3. Flat or generic writing: replace vague phrases with concrete detail; vary sentence length; cut any moral spelled out at the end. Remove empty filler ("delve", "tapestry", "a testament to", "embark on a journey"). KEEP the exam set phrases marked [[...]] (they are there on purpose for exam practice); only fix them if they are used incorrectly or several are stacked in one sentence. Keep "phrases" consistent with the [[...]] marks.
@@ -1439,10 +1487,13 @@ function usedCount(art, words) {
   const covered = words.filter((w) => c.get(w.word.toLowerCase())).length;
   const twice = words.filter((w) => (c.get(w.word.toLowerCase()) || 0) >= 2).length;
   const phrases = Math.min((art.paragraphs.join(" ").match(/\[\[[^\[\]]+\]\]/g) || []).length, 9);
-  return covered * 1000 + twice * 10 + phrases;
+  // Penalties, so an edit that removes drilling (a word used 5 times, restated sentences) wins.
+  const over = words.filter((w) => (c.get(w.word.toLowerCase()) || 0) > 3).length;
+  const dups = nearDuplicates(sentencesOf(art)).length;
+  return covered * 1000 + twice * 10 + phrases - over * 8 - dups * 4;
 }
 
-function parseArticle(text) {
+function parseArticle(text, words = []) {
   let t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const a = t.indexOf("{"), b = t.lastIndexOf("}");
   if (a < 0 || b < a) throw new UserError("模型返回的内容不是 JSON，点「生成短文」再试一次。", text.slice(0, 500));
@@ -1454,7 +1505,43 @@ function parseArticle(text) {
   obj.glossary = Array.isArray(obj.glossary) ? obj.glossary : [];
   obj.phrases = Array.isArray(obj.phrases) ? obj.phrases.filter((p) => p && p.phrase) : [];
   obj.quiz = Array.isArray(obj.quiz) ? obj.quiz.filter((q) => Array.isArray(q.options) && q.options.length) : [];
-  return obj;
+  return cleanMarks(obj, words);
+}
+
+/* ---- repair the model's markup ----
+   Seen in real DeepSeek output: "{{liberty}}" without the "|lemma" half (shown raw on the page),
+   [[...]] or {{...}} copied into the Chinese translation, a phrase template like
+   "_not only ... but also_" pasted into a sentence, and the same phrase listed twice. */
+const stemOf = (s) => String(s).toLowerCase().replace(/(ies|ied)$/, "y").replace(/(es|ed|ing|s|d)$/, "");
+function lemmaFor(surface, words) {
+  const s = surface.trim().toLowerCase();
+  const hit = words.find((w) => w.word.toLowerCase() === s)
+    || words.find((w) => stemOf(w.word) === stemOf(s))
+    || words.find((w) => s.startsWith(w.word.toLowerCase().replace(/e$/, "")) && s.length - w.word.length <= 4);
+  return hit ? hit.word : surface.trim();
+}
+function cleanMarks(art, words = []) {
+  const fix = (p) => String(p)
+    // {{word}} with no lemma: attach the matching target word (or the word itself)
+    .replace(/\{\{([^{}|]+)\}\}/g, (_, s) => `{{${s}|${lemmaFor(s, words)}}}`)
+    // phrase templates pasted into prose, e.g. "for myself not only ... but also but also"
+    .replace(/\s*\[\[\s*[^\[\]]*(?:\.\.\.|…)[^\[\]]*\]\]\s*/g, " ")
+    .replace(/\s*_[^_\n]*(?:\.\.\.|…)[^_\n]*_\s*/g, " ")
+    // markdown italics the model sometimes uses instead of [[...]]
+    .replace(/_([A-Za-z][^_\n]{2,60})_/g, "[[$1]]")
+    .replace(/\b(\w+)\s+\1\b/gi, (m, w) => (/^(that|had)$/i.test(w) ? m : w))   // "but also but also"
+    .replace(/\s{2,}/g, " ").trim();
+  art.paragraphs = art.paragraphs.map(fix);
+  // Translations are Chinese prose: strip any markup the model copied over.
+  art.translation = (art.translation || []).map((z) => String(z || "")
+    .replace(/\{\{([^{}|]+)(?:\|[^{}]*)?\}\}/g, "$1").replace(/\[\[([^\[\]]*)\]\]/g, "$1").replace(/_([^_\n]+)_/g, "$1"));
+  // One entry per phrase.
+  const seen = new Set();
+  art.phrases = (art.phrases || []).filter((p) => {
+    const k = String(p.phrase).toLowerCase().replace(/[^a-z]+/g, " ").trim();
+    if (!k || seen.has(k)) return false; seen.add(k); return true;
+  });
+  return art;
 }
 
 /* ---------------- state ---------------- */
@@ -1717,27 +1804,63 @@ Each part must naturally use its own word list (the writer will use each word tw
 ${groups.map((g, i) => `  Part ${i + 1}: ${g.map((w) => w.word).join(", ")}`).join("\n")}
 ${review.length ? `Review words, to appear once anywhere tonight: ${review.map((w) => w.word).join(", ")}` : ""}
 
-Plan the night so each part's words fit its events (choose situations that make those words natural).
+Plan the night so each part's words fit its events (choose situations that make those words natural, in their common exam sense).
+The narrator and listener appear only at the start of Part 1 and the end of Part ${NIGHT_PARTS}; Parts 2 and 3 stay inside the tale. Each part moves the plot forward with new events; no part repeats another.
 Reply with JSON only:
 {"title": "tonight's English title",
- ${nights.frame ? "" : `"frame": "2-3 sentences describing the frame story, narrator and listener (names), and the stakes",\n `}"parts": [{"beats": "3-5 sentences: exactly what happens in this part, who speaks, which words go where"}],
+ ${nights.frame ? "" : `"frame": "2-3 sentences describing the frame story, narrator and listener (names), and the stakes",\n `}"cast": "one line per character of tonight's tale: name, role, one trait",
+ "parts": [{"beats": "3-5 sentences: exactly what happens in this part, who speaks, which words go where"}],
  "summary": "2 sentences summarizing tonight's tale (for continuity)",
  "hook": "the cliffhanger the night ends on (1 sentence)"}`;
 }
 
-function nightPartPrompt(part, idx, outline, words, review, opts) {
+// Essay phrases rotate through a pool so the same two don't appear every night (in the first
+// real night, "There is no denying that" and "not only ... but also" each showed up twice).
+const PHRASE_POOL = [
+  "It is widely acknowledged that", "There is no denying that", "play a crucial role in", "be closely related to",
+  "not only ... but also", "In the long run", "On the one hand ... on the other hand", "It goes without saying that",
+  "a growing number of", "contribute to", "As a result", "be attributed to", "pose a threat to",
+  "take measures to", "Admittedly", "be of great significance", "make a difference", "In addition",
+];
+function nightPhrases(night, n) {
+  const start = ((night - 1) * 3) % PHRASE_POOL.length;
+  return Array.from({ length: n }, (_, i) => PHRASE_POOL[(start + i) % PHRASE_POOL.length]);
+}
+function assignedPhraseRule(phrase) {
+  return `6. Use this one exam-essay phrase exactly once, where it fits naturally: "${phrase}". Write it as a normal part of a full sentence (for "not only ... but also", write e.g. "she [[not only]] read the letter [[but also]] kept it"). Wrap the phrase words in double square brackets. In "phrases" list only it, with a Chinese meaning and one short Chinese tip on how to use it in an essay. Do not add any other set phrases.`;
+}
+
+// The frame (narrator and listener) only appears at the very start and very end of the night.
+// In the first real night, the narrator interrupted in parts 1, 3 and 4, which broke the tale.
+function frameNames(frame = nights.frame) {
+  const src = String(frame || "");
+  return [...new Set((src.match(/\b[A-Z][a-z]{2,}\b/g) || []).filter((w) => !/^(The|This|She|Her|His|They|Each|Every|When|Night|Nights|One|Thousand|Sultan|Sultana|Palace|Lady|Lord|King|Queen)$/.test(w)))];
+}
+function frameCheck(idx, names) {
+  return (art) => {
+    if (idx === 0 || idx === NIGHT_PARTS - 1 || !names.length) return [];
+    const hit = names.filter((n) => art.paragraphs.some((p) => new RegExp(`\\b${n}\\b`).test(p)));
+    return hit.length ? [`This is a middle part of the inner tale. The frame characters (${hit.join(", ")}) must not appear: remove their lines and any scene in the palace, and stay inside the tale.`] : [];
+  };
+}
+
+function nightPartPrompt(part, idx, outline, words, review, opts, phrase) {
   const role = PART_ROLES[idx];
-  const prev = idx > 0 ? `Previous part (for continuity, do not repeat it): ${outline.parts[idx - 1]?.beats || ""}` : "";
-  const next = idx < NIGHT_PARTS - 1 ? `Next part will cover: ${outline.parts[idx + 1]?.beats || ""}` : "";
+  const plan = outline.parts.map((p, i) => `  Part ${i + 1}${i === idx ? " (THIS PART)" : ""}: ${p.beats}`).join("\n");
+  const edges = idx === 0
+    ? "Only this part's opening (one short scene) is in the palace with the narrator and listener; once the tale begins, stay inside it."
+    : idx === NIGHT_PARTS - 1
+      ? "Finish the tale first. Only the last one or two paragraphs return to the palace, to the narrator and listener, ending on the hook."
+      : "Stay entirely inside the inner tale. The narrator and listener do not appear in this part.";
   const craft = role.mode === "argument"
     ? "This part is argumentative, like a 考研 reading passage spoken or written by a character: a clear claim, two pieces of concrete evidence, one opposing view stated fairly and answered, a measured conclusion. Use formal written English for the argument itself; keep the surrounding narration short."
     : "Narrative: one or two concrete scenes, sensory detail, a few lines of natural dialogue, varied sentence length. Do not summarize what should be shown.";
-  const sub = { ...opts, genre: role.mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" };
-  const base = buildPrompt(words, sub, review)
+  const sub = { ...opts, assignPhrase: phrase, genre: role.mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" };
+  return buildPrompt(words, sub, review)
     .replace(/^You are an experienced writer[^\n]*\n/, `You are writing PART ${idx + 1} of ${NIGHT_PARTS} of tonight's installment ("${outline.title}") of a One Thousand and One Nights style serial for Chinese learners of English. The learner memorized these words today:\n`)
-    .replace(/Write [^\n]*English words long[^\n]*\n/, `Write about 400 English words for this part, at the level of ${opts.level}. It is one continuous section of a longer text: no title of its own, no summary of other parts.\n`)
-    .replace(/Before writing, silently decide[^\n]*\n/, `Story so far: ${nights.frame || outline.frame || ""}\nThis part: ${part.beats}\n${prev}\n${next}\nHow to write it: ${craft}\n`);
-  return base;
+    .replace(/Write [^\n]*English words long[^\n]*\n/, `Write about 400 English words for this part, at the level of ${opts.level}. It is one continuous section of a longer text: no title of its own, no summary or retelling of other parts.\n`)
+    .replace(/Before writing, silently decide[^\n]*\n/,
+      `Frame story: ${nights.frame || outline.frame || ""}\nCharacters (use these names and roles consistently): ${outline.cast || ""}\nTonight's full plan:\n${plan}\n${edges}\nDo not repeat events, images or sentences from the other parts; pick up exactly where the previous part ends.\nHow to write it: ${craft}\n`);
 }
 
 function nightsAvailable() { return isNights($("genre").value); }
@@ -1770,12 +1893,19 @@ async function generateNight(words, opts) {
     let done = 0;
     const tick = () => stage(`第 ${nights.count + 1} 夜《${esc(outline.title || "")}》`, `已写好 ${done} / ${plan.groups.length} 段，每段写完会再精修一遍…`);
     tick();
+    // One different essay phrase per part, rotating each night; the argument part gets two.
+    const pool = nightPhrases(nights.count + 1, plan.groups.length + 1);
+    const phraseFor = plan.groups.map((_, i) => PART_ROLES[i].mode === "argument" ? `${pool[i]}" and "${pool[plan.groups.length]}` : pool[i]);
+    const names = frameNames(nights.frame || outline.frame);
     const parts = await Promise.all(plan.groups.map(async (g, i) => {
-      const art = await writeChecked(nightPartPrompt(outline.parts[i], i, outline, g, reviewFor[i], opts), g, reviewFor[i],
-        { ...opts, genre: PART_ROLES[i].mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" });
+      const sub = { ...opts, assignPhrase: phraseFor[i], genre: PART_ROLES[i].mode === "argument" ? "an argumentative essay like an exam reading passage" : "a short story with characters and a plot" };
+      const art = await writeChecked(nightPartPrompt(outline.parts[i], i, outline, g, reviewFor[i], opts, phraseFor[i]), g, reviewFor[i], sub, frameCheck(i, names));
       done++; tick();
       return art;
     }));
+    // Parts are written in parallel, so they can echo each other. Rewrite any later sentence that
+    // nearly repeats one from an earlier part (one edit call per affected part, kept only if better).
+    await dedupeAcrossParts(parts, plan.groups, reviewFor, opts, (t) => stage(`第 ${nights.count + 1} 夜《${esc(outline.title || "")}》`, t));
 
     // Join the parts into one article; every section keeps its own paragraphs and translation.
     const art = {
@@ -1809,6 +1939,7 @@ async function generateNight(words, opts) {
     else markWritten(allWords);
     nights.count += 1;
     if (!nights.frame) nights.frame = outline.frame || "";
+    art.phrases = cleanMarks({ paragraphs: [], phrases: art.phrases }).phrases;   // one entry per phrase
     nights.tales.push({ night: nights.count, title: art.title, summary: outline.summary || "" });
     nights.tales = nights.tales.slice(-30);
     nights.hook = outline.hook || "";
@@ -1833,12 +1964,14 @@ async function generateNight(words, opts) {
 }
 
 // Shared by short articles and night parts: draft, then up to two audit-driven edits.
-async function writeChecked(prompt, words, review, opts) {
-  let art = parseArticle(await callModel(prompt));
+// A revision is kept only if it parses and scores at least as well, so an edit can't make it worse.
+async function writeChecked(prompt, words, review, opts, extraCheck = () => []) {
+  const all = [...words, ...review];
+  let art = parseArticle(await callModel(prompt), all);
   for (let round = 0; round < 2; round++) {
-    if (round > 0 && auditArticle(art, words, opts, review).ok) break;
+    if (round > 0 && auditArticle(art, words, opts, review, extraCheck(art)).ok) break;
     try {
-      const rev = parseArticle(await callModel(buildRevisePrompt(art, words, opts, review)));
+      const rev = parseArticle(await callModel(buildRevisePrompt(art, words, opts, review, extraCheck(art))), all);
       if (usedCount(rev, words) >= usedCount(art, words)) { rev.refined = true; art = rev; }
     } catch (e) {
       if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
@@ -1846,6 +1979,27 @@ async function writeChecked(prompt, words, review, opts) {
     }
   }
   return syncPhrases(art);
+}
+
+async function dedupeAcrossParts(parts, groups, reviewFor, opts, onStatus) {
+  const jobs = [];
+  for (let i = 1; i < parts.length; i++) {
+    const earlier = parts.slice(0, i).flatMap(sentencesOf);
+    const mine = sentencesOf(parts[i]);
+    const pairs = nearDuplicates([...earlier, ...mine]).filter(([a, b]) => earlier.includes(a) && mine.includes(b));
+    if (!pairs.length) continue;
+    const extra = [`${pairs.length} sentence(s) in this part nearly repeat earlier parts of tonight's text, e.g. "${plainText(pairs[0][1]).slice(0, 100)}" repeats "${plainText(pairs[0][0]).slice(0, 100)}". Rewrite them so this part tells something new; keep every marked word.`];
+    jobs.push((async () => {
+      try {
+        const g = groups[i], r = reviewFor[i];
+        const rev = parseArticle(await callModel(buildRevisePrompt(parts[i], g, opts, r, extra)), [...g, ...r]);
+        if (usedCount(rev, g) >= usedCount(parts[i], g) - 4) parts[i] = syncPhrases(rev);
+      } catch (e) {
+        if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
+      }
+    })());
+  }
+  if (jobs.length) { onStatus(`四段写好了，正在改掉段与段之间重复的句子（${jobs.length} 段）…`); await Promise.all(jobs); }
 }
 
 function parseAiJson(text) {
@@ -1902,23 +2056,7 @@ async function runBatch(tasks, opts, batchId) {
       const t = queue.shift();
       try {
         const review = t.review || [];
-        let art = parseArticle(await callModel(buildPrompt(t.words, opts, review)));
-        if (opts.refine) {
-          // Up to two editing rounds. Round 1 is the full edit with the audit's problem list;
-          // round 2 runs only if the audit still fails. A revision is kept only if it parses and
-          // scores at least as well as what we have, so a bad edit can never make things worse.
-          for (let round = 0; round < 2; round++) {
-            if (round > 0 && auditArticle(art, t.words, opts, review).ok) break;
-            try {
-              const rev = parseArticle(await callModel(buildRevisePrompt(art, t.words, opts, review)));
-              if (usedCount(rev, t.words) >= usedCount(art, t.words)) { rev.refined = true; art = rev; }
-            } catch (e) {
-              if (e instanceof UserError && /Key|余额|地址|没有发出去/.test(e.message)) throw e;
-              break;
-            }
-          }
-        }
-        syncPhrases(art);
+        const art = await writeChecked(buildPrompt(t.words, opts, review), t.words, review, opts);
         // Only review words that actually made it into the text count as reviewed.
         const counts = markCounts(art);
         const reviewed = review.filter((w) => counts.get(w.word.toLowerCase()));
@@ -1965,6 +2103,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 
 function renderMarked(text, reviewSet = new Set()) {
   return esc(text)
+    // Older saved articles may still contain {{word}} without a lemma.
+    .replace(/\{\{([^{}|]+)\}\}/g, "{{$1|$1}}")
     .replace(/\{\{([^{}|]+)\|([^{}]+)\}\}/g, (_, surface, lemma) => {
       const k = lemma.trim().toLowerCase();
       return `<mark class="w${reviewSet.has(k) ? " rv" : ""}" tabindex="0" data-w="${k}"${reviewSet.has(k) ? ' title="复习词"' : ""}>${surface}</mark>`;
